@@ -94,7 +94,6 @@ def test_guarded_launch(isolated, monkeypatch, case):
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="requires native macOS applet compiler")
 def test_native_bundle_and_monitor(isolated, tmp_path):
-    import shutil
     import subprocess
     from claude_geo_guard.platforms.macos import application, processes, service
     from claude_geo_guard.storage import atomic_write
@@ -122,7 +121,13 @@ def test_native_bundle_and_monitor(isolated, tmp_path):
         "monitor",
     ]
     exe = tmp_path / "synthetic-app"
-    shutil.copy2("/bin/sleep", exe)
+    subprocess.run(
+        ["/usr/bin/cc", "-x", "c", "-", "-o", str(exe)],
+        input="#include <unistd.h>\nint main(void) { sleep(20); return 0; }\n",
+        text=True,
+        check=True,
+        timeout=60,
+    )
     with subprocess.Popen([exe, "20"]) as child:
         try:
             found = processes.scan({str(exe.resolve())})
@@ -132,3 +137,33 @@ def test_native_bundle_and_monitor(isolated, tmp_path):
         finally:
             if child.poll() is None:
                 child.kill()
+
+
+def test_disposable_runner_launchagent(isolated, tmp_path, monkeypatch):
+    """A temporary HOME alone cannot isolate launchd; opt in on disposable CI only."""
+    import os
+    import uuid
+    from claude_geo_guard.platforms.macos import application, service
+
+    if (
+        sys.platform != "darwin"
+        or os.environ.get("GUARD_CI_LAUNCHD") != "1"
+        or os.environ.get("GITHUB_ACTIONS") != "true"
+    ):
+        pytest.skip("requires disposable macOS runner with a GUI domain")
+    monkeypatch.setattr(service, "LABEL", "local.guard-ci." + uuid.uuid4().hex)
+    fake = tmp_path / "unused-claude"
+    fake.write_text("#!/bin/sh\necho '2.1.295 (Claude Code)'\n")
+    fake.chmod(0o755)
+    record = {"path": str(tmp_path / "Example.app"), "executable": str(tmp_path / "nonrunning-app")}
+    monkeypatch.setattr(application, "identify", lambda path: record)
+    plan = installer.preflight(isolated, claude_binary=str(fake), desktop_app=record["path"])
+    try:
+        installer.install(isolated, plan)
+        assert service.healthy(isolated)
+        assert application.destination(isolated).is_dir()
+        installer.uninstall(isolated)
+        assert not service.status(isolated)
+        assert not application.destination(isolated).exists()
+    finally:
+        service.stop(isolated)
