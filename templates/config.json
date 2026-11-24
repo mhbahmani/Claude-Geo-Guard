@@ -1,0 +1,8 @@
+{
+  "allowed_country": "GB",
+  "timezone": null,
+  "interval": 15,
+  "grace": 5,
+  "allowed_ips": [],
+  "success_notifications": true
+}
