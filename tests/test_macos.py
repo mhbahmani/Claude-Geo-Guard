@@ -5,8 +5,10 @@ from unittest.mock import Mock
 import pytest
 
 from claude_geo_guard import installer
+from claude_geo_guard import desktop_launcher
+from claude_geo_guard.checker import Verdict
 from claude_geo_guard.paths import Paths
-from claude_geo_guard.platforms.macos import environment, networking
+from claude_geo_guard.platforms.macos import dialogs, environment, networking
 
 
 def test_cli_install_roundtrip(isolated, tmp_path, monkeypatch):
@@ -46,6 +48,46 @@ def test_ambiguous_proxy_denies(monkeypatch, output):
     monkeypatch.setattr(networking, "run", Mock(return_value=CompletedProcess([], 0, output, "")))
     with pytest.raises(ValueError, match="proxy"):
         networking.snapshot()
+
+
+def test_runtime_dialog_describes_unverified_connection_without_python_dicts():
+    verdict = Verdict(
+        False,
+        "verification failed (ValueError)",
+        {},
+        "GB",
+        allowed_ips=["194.62.249.75"],
+    )
+    error = desktop_launcher.LaunchBlocked(
+        verdict.reason, kind="verification", verdict=verdict
+    )
+
+    message = dialogs.describe(error, runtime=True)
+
+    assert "Claude was closed by the guard" in message
+    assert "Allowed country: GB" in message
+    assert "Detected country / IP: Not verified · IP not returned" in message
+    assert "IP filter: Enabled" in message
+    assert "Technical details: verification failed (ValueError)" in message
+    assert "{}" not in message
+
+
+def test_runtime_dialog_formats_detected_family():
+    verdict = Verdict(
+        False,
+        "egress outside configured country GB",
+        {4: "DE"},
+        "GB",
+        {4: "1.2.3.4"},
+    )
+    error = desktop_launcher.LaunchBlocked(
+        verdict.reason, kind="verification", verdict=verdict
+    )
+
+    message = dialogs.describe(error, runtime=True)
+
+    assert "Detected IPv4: DE · 1.2.3.4" in message
+    assert "Use a connection in the allowed country" in message
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS routing tools")
