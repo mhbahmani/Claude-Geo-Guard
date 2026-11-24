@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+On Linux, the idle monitor uses a lightweight executable scan and skips network checks while Claude Desktop is closed. Opening Claude through the guarded launcher starts a stopped monitor. If startup fails, Claude stays closed.
+
+After a successful guarded launch, a popup shows the verified country and public IP. Claude opens immediately. Click OK to dismiss the popup, or let it close after five seconds. The existing `success_notifications` setting controls it.
+
 ## 0.4.0
 
 Run `./install.sh` without flags for guided setup. Press Enter to accept the displayed default or keep your saved value on reinstall. The installer explains which destinations see your public IP and previews the changes before applying them. Use `--yes` for unattended installation.
