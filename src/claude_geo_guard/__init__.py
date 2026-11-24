@@ -1,3 +1,3 @@
-"""Linux-only, best-effort geolocation checkpoints for Claude."""
+"""Linux and macOS, best-effort geolocation checkpoints for Claude."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

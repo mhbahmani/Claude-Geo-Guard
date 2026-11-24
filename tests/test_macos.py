@@ -17,7 +17,7 @@ def test_cli_install_roundtrip(isolated, tmp_path, monkeypatch):
     binary.chmod(0o755)
     paths = Paths.current()
     with pytest.raises(ValueError, match="skip-desktop"):
-        installer.preflight(paths)
+        installer.preflight(paths, skip_desktop=True, desktop_app="/unused")
     assert not paths.guard_config.exists()
     for _ in range(2):
         plan = installer.preflight(paths, skip_desktop=True, claude_binary=str(binary))
@@ -51,3 +51,84 @@ def test_ambiguous_proxy_denies(monkeypatch, output):
 @pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS routing tools")
 def test_native_cli_only_prerequisites():
     environment.preflight(skip_desktop=True, desktop_app=None)
+
+
+@pytest.mark.parametrize("case", ["allowed", "denied", "inactive", "changed", "stopped"])
+def test_guarded_launch(isolated, monkeypatch, case):
+    from claude_geo_guard.platforms.macos import application
+    from claude_geo_guard.checker import Verdict
+    from claude_geo_guard.storage import atomic_write, json_bytes
+
+    from claude_geo_guard.config import DEFAULTS
+
+    atomic_write(isolated.guard_config, json_bytes(DEFAULTS))
+    record = {"path": str(isolated.home / "Claude Test.app")}
+    atomic_write(isolated.manifest, json_bytes({"mac_app": record}))
+    monkeypatch.setattr(
+        application.service, "healthy", Mock(side_effect=[case != "inactive", case != "stopped"])
+    )
+    monkeypatch.setattr(
+        application,
+        "check",
+        lambda: Verdict(case != "denied", "policy", {4: "GB"}, "GB", {4: "1.1.1.1"}),
+    )
+    monkeypatch.setattr(application, "identify", lambda _: {} if case == "changed" else record)
+    monkeypatch.setattr(application, "launch_environment", lambda _: {"TZ": "Europe/London"})
+    launch = Mock()
+    monkeypatch.setattr(application.subprocess, "run", launch)
+    monkeypatch.setattr(application.dialogs, "notify", Mock())
+    if case == "allowed":
+        application.launch(isolated, [])
+        assert launch.call_args.args[0] == [
+            "/usr/bin/open",
+            "--env",
+            "TZ=Europe/London",
+            "-a",
+            record["path"],
+        ]
+    else:
+        with pytest.raises(ValueError):
+            application.launch(isolated, [])
+        launch.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires native macOS applet compiler")
+def test_native_bundle_and_monitor(isolated, tmp_path):
+    import shutil
+    import subprocess
+    from claude_geo_guard.platforms.macos import application, processes, service
+    from claude_geo_guard.storage import atomic_write
+    import plistlib
+
+    import shlex
+
+    marker = tmp_path / "guard-invoked"
+    atomic_write(
+        isolated.bin / "claude-geo-guard",
+        ("#!/bin/sh\nprintf '%s' \"$1\" > " + shlex.quote(str(marker)) + "\n").encode(),
+        0o755,
+    )
+    application.build(isolated, atomic_write)
+    app = application.destination(isolated)
+    subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(app)], check=True)
+    subprocess.run(
+        ["/usr/bin/osascript", str(app / "Contents/Resources/Scripts/main.scpt")],
+        check=True,
+        timeout=15,
+    )
+    assert marker.read_text() == "desktop"
+    assert plistlib.loads(service.contents(isolated))["ProgramArguments"] == [
+        str(isolated.bin / "claude-geo-guard"),
+        "monitor",
+    ]
+    exe = tmp_path / "synthetic-app"
+    shutil.copy2("/bin/sleep", exe)
+    with subprocess.Popen([exe, "20"]) as child:
+        try:
+            found = processes.scan({str(exe.resolve())})
+            assert [p.pid for p in found] == [child.pid]
+            processes.terminate(found, grace=0.1)
+            assert child.wait(timeout=3) < 0
+        finally:
+            if child.poll() is None:
+                child.kill()

@@ -6,7 +6,14 @@ def backend(name):
     systems = {"linux": "linux", "darwin": "macos"}
     if sys.platform not in systems:
         raise ValueError("supported platforms: Linux and macOS")
-    if sys.platform == "darwin" and name not in {"environment", "networking", "dialogs"}:
+    if sys.platform == "darwin" and name not in {
+        "environment",
+        "networking",
+        "dialogs",
+        "processes",
+        "service",
+        "application",
+    }:
         raise ValueError("macOS Desktop support is unavailable; use --skip-desktop")
     return import_module(f"{__name__}.{systems[sys.platform]}.{name}")
 

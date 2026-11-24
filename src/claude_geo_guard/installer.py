@@ -39,7 +39,7 @@ def inspect_environment(paths):
             "python": platform.python_version(),
             "shell": os.environ.get("SHELL", "unknown"),
             "home": str(paths.home),
-            "desktop_support": "unavailable: native validation pending",
+            "desktop_support": "Claude Guard.app and user LaunchAgent (experimental)",
         }
     distro = platform.freedesktop_os_release()
     return {
@@ -66,8 +66,9 @@ def preflight(
     desktop_app=None,
 ):
     backend("environment").preflight(skip_desktop=skip_desktop, desktop_app=desktop_app)
-    desktop_entries = backend("desktop_entries") if not skip_desktop else None
-    systemd = backend("systemd") if not skip_desktop else None
+    linux_desktop = sys.platform == "linux" and not skip_desktop
+    desktop_entries = backend("desktop_entries") if linux_desktop else None
+    systemd = backend("systemd") if linux_desktop else None
     if not Path(os.environ.get("ZDOTDIR") or paths.home).is_absolute():
         raise ValueError("ZDOTDIR must be absolute for reversible shell integration")
     if os.environ.get("CLAUDE_CONFIG_DIR"):
@@ -112,11 +113,20 @@ def preflight(
             "guard hooks exist without an ownership manifest; reconcile before installing"
         )
     merged = settings_manager.merge(settings, groups, guard)
-    if old and skip_desktop and old["desktops"]:
+    if old and skip_desktop and (old["desktops"] or old.get("mac_app")):
         raise ValueError("uninstall first before changing to CLI-only mode")
-    entries = [] if skip_desktop else desktop_entries.discover(paths)
+    mac_app = None
+    if sys.platform == "darwin" and not skip_desktop:
+        application = backend("application")
+        mac_app = application.discover(
+            paths, desktop_app or ((old or {}).get("mac_app") or {}).get("path")
+        )
+        if not (old or {}).get("mac_app") and application.destination(paths).exists():
+            raise ValueError("refusing to overwrite existing Claude Guard.app")
+        backend("service").run("print", backend("service").domain())
+    entries = desktop_entries.discover(paths) if linux_desktop else []
     desktops = []
-    binaries = set()
+    binaries = {mac_app["executable"]} if mac_app else set()
     old_desktops = {d["target"]: d for d in (old or {}).get("desktops", [])}
     # Keep tracking hidden/removed entries to avoid orphaning an override on repeat install.
     found = {str(e.target) for e in entries}
@@ -188,6 +198,7 @@ def preflight(
         "settings": merged,
         "settings_raw": original_raw,
         "desktops": desktops,
+        "mac_app": mac_app,
         "binaries": sorted(binaries),
         "interval": interval,
         "grace": grace,
@@ -209,17 +220,23 @@ def summary(plan):
         "claude_code": plan["binary"],
         "version": plan["version"],
         "desktop_overrides": [d["target"] for d in plan["desktops"]],
-        "monitor": bool(plan["desktops"]),
+        "monitor": bool(plan["desktops"] or plan.get("mac_app")),
+        "mac_app": plan.get("mac_app"),
         "desktop_error_dialog": dialogs.available(),
         "platform": sys.platform,
-        "desktop_support": "Linux only; macOS native validation pending",
+        "desktop_support": "Linux desktop entries or experimental macOS launcher",
         "interval": plan["interval"],
         "changes": [
             "private Python package and two launchers",
             "three appended user hook groups",
             "marked PATH blocks in .bashrc, .profile and Zsh .zshrc/.zprofile",
         ],
-        "limitations": [LIMITATION, "CLI and hooks only. macOS Desktop is unprotected."]
+        "limitations": [
+            LIMITATION,
+            "Use Claude Guard.app for launch checks. Direct opens are checked periodically."
+            if plan.get("mac_app")
+            else "CLI and hooks only.",
+        ]
         if sys.platform == "darwin"
         else [
             LIMITATION,
@@ -295,6 +312,11 @@ def install(paths, plan):
                 records[key]["preserve"] = bool(preserve_config)
             tx.write(path, data, mode)
 
+        mac_service = backend("service") if plan.get("mac_app") else None
+        mac_loaded = bool(mac_service and mac_service.status(paths))
+        if mac_loaded and not old.get("mac_app"):
+            raise ValueError("unowned monitor is already loaded")
+        mac_touched = False
         service_touched = False
         try:
             write(paths.guard_config, plan["config_data"], kind="config")
@@ -354,8 +376,15 @@ def install(paths, plan):
                     systemd.unit(guard).encode(),
                     0o644,
                 )
+            if mac_service:
+                app = backend("application")
+                if app.identify(Path(plan["mac_app"]["path"])) != plan["mac_app"]:
+                    raise ValueError("Claude.app changed during installation")
+                app.build(paths, write)
+                write(mac_service.plist(paths), mac_service.contents(paths))
             manifest = {
                 "schema": 2,
+                "mac_app": plan.get("mac_app"),
                 "files": records,
                 "groups": plan["groups"],
                 "original_settings": old.get("original_settings", encode(plan["settings_raw"])),
@@ -373,6 +402,10 @@ def install(paths, plan):
                 systemd.run("restart", systemd.UNIT)
                 if not systemd.active():
                     raise ValueError("monitor did not become active")
+            if mac_service:
+                mac_touched = True
+                mac_service.stop(paths)
+                mac_service.start(paths)
             # Verify launchers are executable/importable without network or app launches.
             subprocess.run([str(guard), "--version"], capture_output=True, check=True, timeout=5)
         except BaseException:
@@ -380,7 +413,13 @@ def install(paths, plan):
                 systemd.best_effort("stop", systemd.UNIT)
                 if not was_enabled:
                     systemd.best_effort("disable", systemd.UNIT)
-            conflicts = tx.rollback()
+            try:
+                if mac_touched:
+                    mac_service.stop(paths)
+            finally:
+                conflicts = tx.rollback()
+                if mac_touched and mac_loaded:
+                    mac_service.start(paths)
             if service_touched:
                 systemd.best_effort("daemon-reload")
                 if was_active:
@@ -443,6 +482,8 @@ def uninstall(paths):
                     )
                 target = before
             changes[path] = (target, record["mode"])
+        mac_service = backend("service") if manifest.get("mac_app") else None
+        mac_loaded = bool(mac_service and mac_service.status(paths))
         has_service = bool(manifest["desktops"])
         was_active = systemd.active() if has_service else False
         was_enabled = (
@@ -454,6 +495,8 @@ def uninstall(paths):
         try:
             if has_service:
                 systemd.run("disable", "--now", systemd.UNIT)
+            if mac_loaded:
+                mac_service.stop(paths)
             for path, (data, mode) in changes.items():
                 tx.write(path, data, mode)
             tx.write(paths.manifest, None)
@@ -461,6 +504,8 @@ def uninstall(paths):
                 systemd.run("daemon-reload")
         except BaseException:
             tx.rollback()
+            if mac_loaded and not mac_service.status(paths):
+                mac_service.start(paths)
             if has_service:
                 systemd.best_effort("daemon-reload")
                 if was_enabled:
@@ -468,6 +513,19 @@ def uninstall(paths):
                 if was_active:
                     systemd.best_effort("start", systemd.UNIT)
             raise
+        if mac_service:
+            bundle = backend("application").destination(paths)
+            directories = {
+                parent
+                for path in changes
+                for parent in path.parents
+                if parent == bundle or bundle in parent.parents
+            }
+            for directory in sorted(directories, key=lambda d: len(d.parts), reverse=True):
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
         return {
             "uninstalled": True,
             "backups_retained": str(paths.manifest.parent / "backups"),

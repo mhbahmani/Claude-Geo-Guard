@@ -1,6 +1,6 @@
 # macOS support and publication readiness plan
 
-Status: experimental macOS CLI/hooks implemented. Native Desktop, LaunchAgent and GUI validation remain pending. Prepared 2026-11-24 from the current repository.
+Status: experimental macOS CLI/hooks implemented. Desktop launcher and LaunchAgent implemented. Real Claude and GUI acceptance remain pending. Prepared 2026-11-24 from the current repository.
 
 This is a handoff for a future implementation session. The current product supports Linux only. This document authorizes no publication, service changes, installation into a real user home, or changes to Anthropic's application. Implement the plan when the user asks to continue it.
 

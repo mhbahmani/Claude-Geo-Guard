@@ -39,7 +39,7 @@ def diagnostics(paths):
         "issues": [],
     }
     if not linux:
-        report["not_verified"][1] = "macOS Desktop and runtime protection unavailable"
+        report["not_verified"][1] = "Finder, Dock and real Claude Desktop GUI behavior"
     issues = report["issues"]
     report["config_file"] = str(paths.guard_config)
     report["timezone_scope"] = "new guarded Claude processes"
@@ -70,7 +70,13 @@ def diagnostics(paths):
             "PATH bypasses wrapper: open a new Bash/Zsh shell, then type -a claude; check aliases/functions"
         )
     report["monitor_active"] = linux and systemd.active()
-    report["desktop_error_dialog"] = linux and dialogs.available()
+    if not linux and (manifest or {}).get("mac_app"):
+        report["guarded_application"] = str(backend("application").destination(paths))
+        report["original_application"] = manifest["mac_app"]["path"]
+        report["monitor_active"] = backend("service").healthy(paths)
+        if not report["monitor_active"]:
+            issues.append("macOS monitor is inactive")
+    report["desktop_error_dialog"] = backend("dialogs").available()
     report["success_notifications_available"] = bool(shutil.which("notify-send"))
     try:
         entries = desktop_entries.discover(paths) if linux else []

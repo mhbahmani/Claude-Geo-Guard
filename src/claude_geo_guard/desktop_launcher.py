@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from . import config
@@ -19,6 +20,8 @@ class LaunchBlocked(ValueError):
 
 
 def launch(paths, args):
+    if sys.platform == "darwin":
+        return backend("application").launch(paths, args)
     systemd = backend("systemd")
     if not args:
         raise ValueError("missing desktop command")

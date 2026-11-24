@@ -28,7 +28,7 @@ def parser():
     install.add_argument("--dry-run", action="store_true")
     install.add_argument("--yes", action="store_true")
     install.add_argument("--claude-binary", type=str)
-    install.add_argument("--desktop-app", help="reserved for validated macOS Desktop support")
+    install.add_argument("--desktop-app", help="absolute path to the Claude.app bundle")
     install.add_argument(
         "--country",
         metavar="CODE",
@@ -131,8 +131,11 @@ def main(argv=None):
         print(f"Claude Geo Guard: {error}", file=sys.stderr)
         if args.command == "desktop" and not backend("dialogs").show_error(error):
             print(
-                "Could not show a desktop error window. Install zenity (GNOME) or kdialog (KDE) "
-                "and launch from a graphical session.",
+                (
+                    "Could not show a desktop error window. Install zenity or kdialog."
+                    if sys.platform == "linux"
+                    else "Could not show a desktop error window; check the graphical session."
+                ),
                 file=sys.stderr,
             )
         return 2

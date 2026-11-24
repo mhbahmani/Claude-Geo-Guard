@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+Adds a macOS Finder launcher and a user LaunchAgent for best-effort runtime checks. Installers select the latest GitHub release by default and master with `--dev`.
 
 - Check country and public IP together through ifconfig.io/all.json; add optional exact allowed_ips matching and show returned IPs beside countries on success and failure.
 - Add optional success notifications for guarded Desktop launches only; runtime recovery remains silent and never restarts Claude.
