@@ -22,7 +22,15 @@ To remove the guard, run `claude-geo-guard uninstall`.
 
 ## How the guard works
 
-At each checkpoint, the guard checks the public IP and country reported by the HTTPS trace endpoints on **claude.ai** and **api.anthropic.com**. The probes send no Claude credentials or cookies. By default it also checks ifconfig.io for general network egress. If your VPN routes only Claude traffic, install with `--split-tunnel` to require just the two destination checks. Every usable address family (IPv4 and IPv6) must match the configured country. If you set an IP allowlist, each returned address must also appear on that list. A timeout, an invalid response, or a mismatch denies the check.
+The guard checks the **public source IP** seen by each destination over IPv4 and IPv6 where usable. The server IP returned by DNS is a different address. The probes send no Claude credentials or cookies.
+
+| Destination | What it reports | Default | `--split-tunnel` |
+|---|---|---|---|
+| `claude.ai/cdn-cgi/trace` | Client IP and country seen by the Claude web edge | Required | Required |
+| `api.anthropic.com/cdn-cgi/trace` | Client IP and country seen by the API edge | Required | Required |
+| `ifconfig.io/all.json` | Client IP and country seen by an unrelated site | Required | Skipped |
+
+For a GB policy, both Claude destinations must report GB even in split-tunnel mode. They may see different UK IPs. If you configure an IP allowlist, **each** observed IP must be on it. A failed required probe blocks the checkpoint. Run `claude-geo-guard check` to see the observations by destination and address family.
 
 ```mermaid
 flowchart TD
@@ -45,7 +53,7 @@ flowchart TD
 
 Suppose your VPN disconnects just after Desktop passes a check. The monitor waits **15 seconds by default** between checks. Claude can send traffic during that wait, while the next check runs, and while the app is closing. Launching the original Desktop executable directly also skips the first check, leaving the monitor to detect it later.
 
-A passing check tells you which public IP each tested destination saw at that moment. With a split-tunnel VPN or an app-specific proxy, Claude’s traffic can take a different route. The guard can block a launch, block a supported Code action, or stop a running Desktop process. It cannot enforce the route of each network request.
+The two Claude traces test destination-specific routing directly. For example, if the web trace sees a UK IP but the API trace sees a German IP, a GB policy denies access in either mode. A passing result describes those probe connections at that moment. A later request, another hostname, or a proxy configured inside Claude can use a different route. The guard cannot enforce the route of every application request.
 
 [Installation and prerequisites](docs/installation.md) · [Configuration and usage](docs/usage.md) · [Troubleshooting](docs/troubleshooting.md) · [Security model](docs/security-model.md) · [Releases](https://github.com/mhbahmani/Claude-Geo-Guard/releases)
 
