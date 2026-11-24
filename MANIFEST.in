@@ -1,0 +1,5 @@
+include LICENSE README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md
+include bootstrap_install.py install.sh uninstall.sh run.py Makefile requirements-dev.txt
+recursive-include docs *.md
+recursive-include templates *.service *.json
+recursive-include tests *.py
