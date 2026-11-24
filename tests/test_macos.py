@@ -43,6 +43,20 @@ def test_ipv4_only(monkeypatch):
     assert networking.snapshot().families == (4,)
 
 
+def test_ipv4_only_when_missing_ipv6_route_exits_successfully(monkeypatch):
+    responses = [
+        (0, "<dictionary> {\n}\n", ""),
+        (0, "interface: utun0", ""),
+        (0, "flags=UP\n inet 10.0.0.1", ""),
+        (0, "", "route: writing to routing socket: not in table\n"),
+    ]
+    monkeypatch.setattr(
+        networking, "run", Mock(side_effect=[CompletedProcess([], *r) for r in responses])
+    )
+
+    assert networking.snapshot().families == (4,)
+
+
 @pytest.mark.parametrize("output", ["", "<dictionary> {\n ProxyAutoConfigEnable : 1\n}"])
 def test_ambiguous_proxy_denies(monkeypatch, output):
     monkeypatch.setattr(networking, "run", Mock(return_value=CompletedProcess([], 0, output, "")))
