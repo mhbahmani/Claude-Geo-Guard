@@ -24,7 +24,10 @@ def snapshot():
     families = []
     for family, target in ((4, "1.1.1.1"), (6, "2606:4700:4700::1111")):
         result = run("/sbin/route", "-n", "get", "-inet" if family == 4 else "-inet6", target)
-        if result.returncode and "not in table" in result.stderr:
+        # Some macOS releases report a missing IPv6 route on stderr while
+        # still exiting successfully. Treat the explicit diagnostic as an
+        # unavailable address family regardless of the process status.
+        if "not in table" in result.stderr:
             continue
         result.check_returncode()
         interface = re.search(r"^\s*interface:\s*([\w.]+)\s*$", result.stdout, re.M)

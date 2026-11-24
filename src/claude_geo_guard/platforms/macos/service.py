@@ -67,6 +67,13 @@ def healthy(paths):
 def stop(paths):
     if status(paths):
         run("bootout", domain() + "/" + LABEL)
+        # bootout may return before launchd removes the job from its GUI
+        # domain. A bootstrap during that window fails with exit status 5.
+        for _ in range(30):
+            if not status(paths):
+                return
+            time.sleep(0.1)
+        raise ValueError("LaunchAgent did not finish stopping")
 
 
 def start(paths):

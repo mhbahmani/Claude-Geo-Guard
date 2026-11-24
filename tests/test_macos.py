@@ -5,8 +5,10 @@ from unittest.mock import Mock
 import pytest
 
 from claude_geo_guard import installer
+from claude_geo_guard import desktop_launcher
+from claude_geo_guard.checker import Verdict
 from claude_geo_guard.paths import Paths
-from claude_geo_guard.platforms.macos import environment, networking
+from claude_geo_guard.platforms.macos import dialogs, environment, networking
 
 
 def test_cli_install_roundtrip(isolated, tmp_path, monkeypatch):
@@ -41,11 +43,61 @@ def test_ipv4_only(monkeypatch):
     assert networking.snapshot().families == (4,)
 
 
+def test_ipv4_only_when_missing_ipv6_route_exits_successfully(monkeypatch):
+    responses = [
+        (0, "<dictionary> {\n}\n", ""),
+        (0, "interface: utun0", ""),
+        (0, "flags=UP\n inet 10.0.0.1", ""),
+        (0, "", "route: writing to routing socket: not in table\n"),
+    ]
+    monkeypatch.setattr(
+        networking, "run", Mock(side_effect=[CompletedProcess([], *r) for r in responses])
+    )
+
+    assert networking.snapshot().families == (4,)
+
+
 @pytest.mark.parametrize("output", ["", "<dictionary> {\n ProxyAutoConfigEnable : 1\n}"])
 def test_ambiguous_proxy_denies(monkeypatch, output):
     monkeypatch.setattr(networking, "run", Mock(return_value=CompletedProcess([], 0, output, "")))
     with pytest.raises(ValueError, match="proxy"):
         networking.snapshot()
+
+
+def test_runtime_dialog_describes_unverified_connection_without_python_dicts():
+    verdict = Verdict(
+        False,
+        "verification failed (ValueError)",
+        {},
+        "GB",
+        allowed_ips=["194.62.249.75"],
+    )
+    error = desktop_launcher.LaunchBlocked(verdict.reason, kind="verification", verdict=verdict)
+
+    message = dialogs.describe(error, runtime=True)
+
+    assert "Claude was closed by the guard" in message
+    assert "Allowed country: GB" in message
+    assert "Detected country / IP: Not verified · IP not returned" in message
+    assert "IP filter: Enabled" in message
+    assert "Technical details: verification failed (ValueError)" in message
+    assert "{}" not in message
+
+
+def test_runtime_dialog_formats_detected_family():
+    verdict = Verdict(
+        False,
+        "egress outside configured country GB",
+        {4: "DE"},
+        "GB",
+        {4: "1.2.3.4"},
+    )
+    error = desktop_launcher.LaunchBlocked(verdict.reason, kind="verification", verdict=verdict)
+
+    message = dialogs.describe(error, runtime=True)
+
+    assert "Detected IPv4: DE · 1.2.3.4" in message
+    assert "Use a connection in the allowed country" in message
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS routing tools")
@@ -167,3 +219,18 @@ def test_disposable_runner_launchagent(isolated, tmp_path, monkeypatch):
         assert not application.destination(isolated).exists()
     finally:
         service.stop(isolated)
+
+
+def test_launchagent_stop_waits_until_job_is_unregistered(monkeypatch):
+    from claude_geo_guard.platforms.macos import service
+
+    monkeypatch.setattr(service, "status", Mock(side_effect=["loaded", "loaded", ""]))
+    launchctl = Mock()
+    delay = Mock()
+    monkeypatch.setattr(service, "run", launchctl)
+    monkeypatch.setattr(service.time, "sleep", delay)
+
+    service.stop(Mock())
+
+    launchctl.assert_called_once_with("bootout", service.domain() + "/" + service.LABEL)
+    delay.assert_called_once_with(0.1)

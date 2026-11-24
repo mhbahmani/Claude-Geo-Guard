@@ -1,6 +1,57 @@
 import subprocess
 
 
+def _egress_lines(verdict):
+    families = sorted(verdict.countries.keys() | verdict.ips.keys() | verdict.errors.keys())
+    if not families:
+        return ["Detected country / IP: Not verified · IP not returned"]
+    return [
+        (
+            f"Detected IPv{family}: "
+            f"{verdict.countries.get(family, 'Not verified')} · "
+            f"{verdict.ips.get(family, 'IP not returned')}"
+        )
+        for family in families
+    ]
+
+
+def describe(error, *, runtime=False):
+    """Build a useful native message without exposing Python container syntax."""
+    heading = "Claude Desktop couldn’t open"
+    explanation = "The guard could not complete its launch checks."
+    next_step = "Check your connection, then open Claude again."
+    facts = []
+
+    verdict = getattr(error, "verdict", None)
+    if verdict is not None:
+        heading = "Claude was closed by the guard" if runtime else "Couldn’t verify your connection"
+        explanation = (
+            "The guard could not verify the connection, so Claude was closed."
+            if runtime
+            else "The guard could not verify the connection, so Claude stayed closed."
+        )
+        if verdict.reason.startswith("egress outside configured country "):
+            explanation = "The connection does not match the allowed country, so Claude " + (
+                "was closed." if runtime else "stayed closed."
+            )
+            next_step = "Use a connection in the allowed country, then open Claude again."
+        elif "does not match configured allowed_ips" in verdict.reason:
+            explanation = "The public IP is not allowed, so Claude " + (
+                "was closed." if runtime else "stayed closed."
+            )
+            next_step = "Check the connection and allowed_ips setting, then open Claude again."
+        if verdict.allowed_country:
+            facts.append(f"Allowed country: {verdict.allowed_country}")
+        facts.extend(_egress_lines(verdict))
+        facts.append(f"IP filter: {'Enabled' if verdict.allowed_ips else 'Off'}")
+
+    sections = [heading, explanation]
+    if facts:
+        sections.append("\n".join(facts))
+    sections.extend((next_step, f"Technical details: {error}"))
+    return "\n\n".join(sections)
+
+
 def available():
     return "osascript"
 
@@ -24,9 +75,7 @@ def present(script, message, stop=None):
 
 
 def show_error(error, runtime=False, stop=None):
-    message = str(error)
-    if runtime and error.verdict:
-        message += "\n" + str(error.verdict.countries) + " " + str(error.verdict.ips)
+    message = describe(error, runtime=runtime)
     return present(
         'display alert "Claude Guard" message (item 1 of argv) as critical giving up after 60',
         message,
