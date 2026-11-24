@@ -1,4 +1,6 @@
 import os
+import shlex
+import subprocess
 from unittest.mock import Mock
 
 import pytest
@@ -49,6 +51,21 @@ def test_unsupported_version(environment, text, message):
 def test_supported_version(environment, text):
     binary = script(environment["bins"] / "claude", f"print({text!r})\n")
     assert cl.version(binary) == text
+
+
+def test_version_timeout_blocks_launch(environment, monkeypatch):
+    binary = environment["bins"] / "claude"
+    command = [str(binary), "--version"]
+    probe = Mock(side_effect=subprocess.TimeoutExpired(command, 30))
+    monkeypatch.setattr(cl, "check", lambda: Verdict(True, "GB", {4: "GB"}))
+    monkeypatch.setattr(subprocess, "run", probe)
+    execute = Mock()
+    monkeypatch.setattr(os, "execve", execute)
+    with pytest.raises(ValueError, match="timed out after 30 seconds") as error:
+        cl.launch(environment["paths"], [])
+    assert shlex.join(command) in str(error.value)
+    assert probe.call_args.kwargs["timeout"] == 30
+    execute.assert_not_called()
 
 
 def test_launch_argv(environment, monkeypatch):

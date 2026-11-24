@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,7 @@ from .checker import check
 from .timezone import launch_environment
 
 MIN_VERSION = (2, 1, 295)
+VERSION_TIMEOUT_SECONDS = 30
 
 
 def discover(wrapper_dir: Path, explicit=None, path=None):
@@ -38,9 +40,22 @@ def discover(wrapper_dir: Path, explicit=None, path=None):
 
 
 def version(binary):
-    output = subprocess.run(
-        [str(binary), "--version"], capture_output=True, text=True, timeout=5, check=True
-    ).stdout
+    command = [str(binary), "--version"]
+    try:
+        output = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=VERSION_TIMEOUT_SECONDS,
+            check=True,
+        ).stdout
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(
+            f"Claude Code CLI version is unknown. The version check timed out after "
+            f"{VERSION_TIMEOUT_SECONDS} seconds. Run {shlex.join(command)} in Terminal, "
+            "then retry the guard once the command completes."
+        ) from error
     match = re.fullmatch(r"\s*(\d+)\.(\d+)\.(\d+)(?:\s+\(Claude Code\))?\s*", output)
     if not match:
         raise ValueError(
