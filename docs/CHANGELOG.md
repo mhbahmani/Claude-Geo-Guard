@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2
+
+- macOS alerts explain why the guard closed Claude, show the available country and IP details, and suggest how to recover.
+- On Macs without an IPv6 route, the guard continues checking IPv4 even when the route command reports the missing route with a successful exit status.
+- The installer waits for macOS to finish unloading the monitor’s LaunchAgent before starting it again, fixing a race during reinstall.
+
 ## 0.6.1
 
 The guard now waits up to 30 seconds for Claude Code to report its version. If the check times out, the error includes the command to run for diagnosis.
