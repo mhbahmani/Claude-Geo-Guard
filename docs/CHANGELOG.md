@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+The guard now waits up to 30 seconds for Claude Code to report its version. If the check times out, the error includes the command to run for diagnosis.
+
+On Linux, the guard continues checking IPv4 when a VPN reports an unreachable IPv6 default and only local IPv6 routes are available.
+
 ## 0.6.0
 
 Installation checks how a fresh interactive Zsh or Bash resolves `claude` and warns when a function, alias or different executable may bypass the guard. Guarded terminal launches report success or the reason for blocking on stderr.

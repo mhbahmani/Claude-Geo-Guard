@@ -1,3 +1,3 @@
 """Linux and macOS, best-effort geolocation checkpoints for Claude."""
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
