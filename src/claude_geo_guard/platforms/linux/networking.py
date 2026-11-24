@@ -1,5 +1,6 @@
 """Route discovery without sending probe packets; no public addresses are persisted."""
 
+import ipaddress
 import json
 import os
 import subprocess
@@ -10,6 +11,17 @@ from dataclasses import dataclass
 class NetworkState:
     families: tuple[int, ...]
     fingerprint: str
+
+
+def _only_local_ipv6(routes):
+    """An unreachable VPN default can yield EHOSTUNREACH instead of ENETUNREACH."""
+    for route in routes:
+        if route.get("type") in {"unreachable", "local", "multicast"}:
+            continue
+        dst = route.get("dst", "default")
+        if dst == "default" or not ipaddress.IPv6Network(dst, strict=False).is_link_local:
+            return False
+    return True
 
 
 def snapshot() -> NetworkState:
@@ -38,6 +50,8 @@ def snapshot() -> NetworkState:
                     return [stable(v) for v in value]
                 return value
 
+            if what[0] == "route":
+                route_table = data
             parts.append(stable(data))
         route = subprocess.run(
             ["ip", "-j", f"-{family}", "route", "get", target, "uid", str(os.getuid())],
@@ -46,6 +60,12 @@ def snapshot() -> NetworkState:
             timeout=1,
         )
         if route.returncode:
+            if (
+                family == 6
+                and route.stderr.strip() == "RTNETLINK answers: No route to host"
+                and _only_local_ipv6(route_table)
+            ):
+                continue
             if "Network is unreachable" not in route.stderr:
                 raise RuntimeError(f"IPv{family} route lookup failed")
             continue

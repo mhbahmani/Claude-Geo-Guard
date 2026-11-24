@@ -202,3 +202,23 @@ def test_provider_execution_failure_is_safe(monkeypatch, error, label):
     verdict = check(routes=lambda: NetworkState((4,), "same"), request=query, environ={})
     assert not verdict.allowed and label in verdict.reason
     assert "private" not in verdict.reason and "secret" not in verdict.reason
+
+
+@pytest.mark.parametrize(
+    "extra", [[], [{"dst": "default", "dev": "tun0"}], [{"dst": "2000::/3", "dev": "tun0"}]]
+)
+def test_linux_ipv6_host_unreachable_with_vpn_default(monkeypatch, extra):
+    table = [{"type": "unreachable", "dst": "default"}, {"dst": "fe80::/64", "dev": "eth0"}] + extra
+
+    def run(args, **kwargs):
+        if "get" in args and "-6" in args:
+            return subprocess.CompletedProcess(args, 2, "", "RTNETLINK answers: No route to host\n")
+        data = [{"dev": "tun0"}] if "get" in args else table if "route" in args else []
+        return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if extra:
+        with pytest.raises(RuntimeError, match="IPv6 route lookup failed"):
+            snapshot()
+    else:
+        assert snapshot().families == (4,)
