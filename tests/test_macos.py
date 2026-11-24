@@ -223,3 +223,18 @@ def test_disposable_runner_launchagent(isolated, tmp_path, monkeypatch):
         assert not application.destination(isolated).exists()
     finally:
         service.stop(isolated)
+
+
+def test_launchagent_stop_waits_until_job_is_unregistered(monkeypatch):
+    from claude_geo_guard.platforms.macos import service
+
+    monkeypatch.setattr(service, "status", Mock(side_effect=["loaded", "loaded", ""]))
+    launchctl = Mock()
+    delay = Mock()
+    monkeypatch.setattr(service, "run", launchctl)
+    monkeypatch.setattr(service.time, "sleep", delay)
+
+    service.stop(Mock())
+
+    launchctl.assert_called_once_with("bootout", service.domain() + "/" + service.LABEL)
+    delay.assert_called_once_with(0.1)
