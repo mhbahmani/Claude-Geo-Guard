@@ -55,6 +55,29 @@ def test_existing_user_override_roundtrip(environment):
     assert target.read_text() == original
 
 
+def test_reinstall_after_desktop_launcher_regenerated(environment):
+    paths = environment["paths"]
+    target = paths.data / "applications" / environment["entry"].name
+    target.parent.mkdir(parents=True)
+    original = environment["entry"].read_bytes()
+    target.write_bytes(original)
+    installer.install(paths, installer.preflight(paths))
+    guarded = target.read_bytes()
+
+    target.write_bytes(original.replace(b" %U", b" --custom %U"))
+    with pytest.raises(ValueError, match="desktop launch line edited") as conflict:
+        installer.preflight(paths)
+    assert str(target) in str(conflict.value)
+    assert b"--custom" in target.read_bytes()
+
+    target.write_bytes(original)
+    paths.guard_config.unlink()
+    installer.install(paths, installer.preflight(paths, country="GB", timezone="inherit"))
+    assert target.read_bytes() == guarded
+    installer.uninstall(paths)
+    assert target.read_bytes() == original
+
+
 def test_new_user_edits_preserved(environment):
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))

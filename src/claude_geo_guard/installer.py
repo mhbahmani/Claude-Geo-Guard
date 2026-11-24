@@ -152,7 +152,15 @@ def preflight(
         source_text = entry.text
         restore_text = entry.text if entry.source == entry.target else None
         if previous:
-            restored = desktop_entries.restore(entry.text, previous["edits"])
+            # A launcher may have been regenerated verbatim without our wrapper.
+            # Only trust an exact saved original; unfamiliar launch commands stay conflicts.
+            if entry.text == previous["restore_text"]:
+                restored = entry.text
+            else:
+                try:
+                    restored = desktop_entries.restore(entry.text, previous["edits"])
+                except ValueError as error:
+                    raise ValueError(f"{entry.target}: {error}") from error
             source = Path(previous["source"])
             if source != entry.target:
                 latest = source.read_bytes().decode("utf-8")
