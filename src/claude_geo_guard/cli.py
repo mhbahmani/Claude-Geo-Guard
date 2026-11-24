@@ -8,6 +8,7 @@ from . import (
     cli_launcher,
     desktop_launcher,
     installer,
+    install_prompts,
     monitor,
 )
 from .checker import check
@@ -93,6 +94,10 @@ def main(argv=None):
                 else 2
             )
         if args.command == "install":
+            interactive = not args.yes and not args.dry_run and sys.stdin.isatty()
+            extra = {}
+            if interactive:
+                original_config, extra = install_prompts.preferences(paths, args)
             plan = installer.preflight(
                 paths,
                 claude_binary=args.claude_binary,
@@ -103,13 +108,18 @@ def main(argv=None):
                 split_tunnel=args.split_tunnel,
                 timezone=args.timezone,
                 desktop_app=args.desktop_app,
+                **extra,
             )
-            print(json.dumps(installer.summary(plan), indent=2))
+            if interactive:
+                if plan["config_raw"] != original_config:
+                    raise ValueError("configuration changed during setup; retry")
+                install_prompts.preview(plan)
+            else:
+                print(json.dumps(installer.summary(plan), indent=2))
             if args.dry_run:
                 return 0
             if not args.yes and (
-                not sys.stdin.isatty()
-                or input("Apply these user-local changes? [y/N] ").lower() != "y"
+                not sys.stdin.isatty() or not install_prompts.yes_no("Apply these changes?", True)
             ):
                 raise ValueError("installation canceled; use --yes for unattended installation")
             installer.install(paths, plan)
@@ -146,7 +156,8 @@ def main(argv=None):
                 file=sys.stderr,
             )
         return 2
-    except KeyboardInterrupt:
+    except (EOFError, KeyboardInterrupt):
+        print("Installation or command canceled.", file=sys.stderr)
         return 2
 
 

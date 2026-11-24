@@ -10,7 +10,7 @@ With curl, Python 3.10+ and Claude Code 2.1.295+ installed, run this in a termin
 curl -fsSL https://raw.githubusercontent.com/mhbahmani/Claude-Geo-Guard/master/install.sh | sh
 ```
 
-The installer previews its changes and asks for confirmation. It installs the **latest release** and defaults to **GB**. To pass options, replace the final `sh` with `sh -s -- --country DE` (choose your country), `sh -s -- --skip-desktop` (CLI only), or `sh -s -- --dev` (master).
+Run without flags for guided setup. Press Enter to accept each value in brackets, including your saved settings on reinstall. Review the plan, then press Enter to install or type `no` to cancel. Use `--yes` for unattended installation or `--dry-run` for a preview. It installs the **latest release** and defaults to **GB**. To pass options, replace the final `sh` with `sh -s -- --country DE` (choose your country), `sh -s -- --skip-desktop` (CLI only), or `sh -s -- --dev` (master).
 
 ## After installation
 

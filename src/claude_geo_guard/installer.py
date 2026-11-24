@@ -63,6 +63,8 @@ def preflight(
     grace=None,
     country=None,
     split_tunnel=None,
+    allowed_ips=None,
+    success_notifications=None,
     timezone=None,
     desktop_app=None,
 ):
@@ -87,6 +89,8 @@ def preflight(
     for key, value in (
         ("allowed_country", country),
         ("split_tunnel", split_tunnel),
+        ("allowed_ips", allowed_ips),
+        ("success_notifications", success_notifications),
         ("timezone", timezone),
         ("interval", interval),
         ("grace", grace),
