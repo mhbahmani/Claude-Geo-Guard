@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+Installation checks how a fresh interactive Zsh or Bash resolves `claude` and warns when a function, alias or different executable may bypass the guard. Guarded terminal launches report success or the reason for blocking on stderr.
+
+CLI version errors identify the executable and distinguish an older Claude Code release from unrecognized version output.
+
 ## 0.5.0
 
 On Linux, the idle monitor uses a lightweight executable scan and skips network checks while Claude Desktop is closed. Opening Claude through the guarded launcher starts a stopped monitor. If startup fails, Claude stays closed.
