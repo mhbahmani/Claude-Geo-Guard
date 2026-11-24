@@ -4,10 +4,18 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'templates/config.json'
+      - 'templates/claude-geo-guard.service'
   pull_request:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'templates/config.json'
+      - 'templates/claude-geo-guard.service'
   workflow_dispatch:
     inputs:
       live_network:
