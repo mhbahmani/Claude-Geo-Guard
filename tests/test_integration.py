@@ -27,6 +27,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
         [str(cli), "hello world", "--flag", "$(no-shell)"], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+    assert "Claude Geo Guard: launch checks passed" in result.stderr
     assert json.loads(result.stdout) == ["hello world", "--flag", "$(no-shell)"]
     first_option = subprocess.run(
         [str(cli), "--help", "-p", "prompt"], capture_output=True, text=True
@@ -38,7 +39,10 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     monkeypatch.setenv("FAKE_EXIT", "17")
     assert subprocess.run([str(cli)], capture_output=True).returncode == 17
     (environment["bins"] / "FAKE_COUNTRY").write_text("US")
-    assert subprocess.run([str(cli)], capture_output=True).returncode == 2
+    denied_cli = subprocess.run([str(cli)], capture_output=True, text=True)
+    assert denied_cli.returncode == 2
+    assert "Claude Geo Guard blocked CLI launch" in denied_cli.stderr
+    assert "launch checks passed" not in denied_cli.stderr
     assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 2
     # Exercise the installed desktop denial path and its window, without a real display.
     helper = environment["bins"] / "zenity"

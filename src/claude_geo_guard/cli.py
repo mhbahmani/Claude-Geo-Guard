@@ -10,6 +10,7 @@ from . import (
     installer,
     install_prompts,
     monitor,
+    shell,
 )
 from .checker import check
 from .platforms import backend
@@ -125,6 +126,7 @@ def main(argv=None):
             if interactive:
                 print("\nInstalling Claude Geo Guard…", flush=True)
             installer.install(paths, plan)
+            print(shell.routing_message(paths.bin / "claude"), file=sys.stderr)
             if interactive:
                 install_prompts.heading("Installation complete")
                 print(f"Backups: {paths.manifest.parent / 'backups'}")
@@ -152,7 +154,10 @@ def main(argv=None):
                 cli_launcher.launch(paths, forwarded, manifest.get("claude_binary"))
         return 0
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-        print(f"Claude Geo Guard: {error}", file=sys.stderr)
+        label = (
+            "Claude Geo Guard blocked CLI launch" if args.command == "code" else "Claude Geo Guard"
+        )
+        print(f"{label}: {error}", file=sys.stderr)
         if args.command == "desktop" and not backend("dialogs").show_error(error):
             print(
                 (

@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from .checker import check
@@ -62,4 +63,7 @@ def launch(paths, args, explicit=None):
         raise ValueError(verdict.reason)
     environment = launch_environment(paths)
     version(binary)
+    print(
+        "Claude Geo Guard: launch checks passed. Starting Claude Code.", file=sys.stderr, flush=True
+    )
     os.execve(str(binary), [str(binary), *args], environment)
