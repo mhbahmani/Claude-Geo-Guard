@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 # proc_bsdinfo from Darwin sys/proc_info.h, PROC_PIDTBSDINFO.
+PROC_UID_ONLY = 4
 BSD = struct.Struct("=12I48s6I2Q")
 
 
@@ -57,7 +58,7 @@ def scan(binaries, previous=()):
     capacity = 256
     while True:
         pids = (ctypes.c_int * capacity)()
-        size = lib().proc_listpids(3, os.getuid(), pids, ctypes.sizeof(pids))
+        size = lib().proc_listpids(PROC_UID_ONLY, os.getuid(), pids, ctypes.sizeof(pids))
         if size <= 0:
             raise OSError("could not enumerate user processes")
         if size < ctypes.sizeof(pids):

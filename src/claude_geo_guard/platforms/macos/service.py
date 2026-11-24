@@ -16,6 +16,7 @@ def contents(paths):
         dict(
             Label=LABEL,
             ProgramArguments=[str(paths.bin / "claude-geo-guard"), "monitor"],
+            EnvironmentVariables={"HOME": str(paths.home)},
             RunAtLoad=True,
             KeepAlive=True,
             ThrottleInterval=10,
