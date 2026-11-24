@@ -11,7 +11,15 @@ Dry-run performs read-only environment, JSON, desktop and version checks. It doe
 
 The first installation defaults to GB if `--country` is omitted. Use an ISO alpha-2 code to select another country, such as `./install.sh --yes --country DE`. Reinstalling without this option preserves the saved country. After installation, `claude-geo-guard set-country FR` changes it atomically with a retained backup; the next launch, hook and monitor check use FR. No service restart is necessary. `status` displays `allowed_country`.
 
-Paths, with normal XDG defaults:
+## macOS Desktop
+
+Install from a logged-in graphical session with Claude.app in /Applications or ~/Applications. For a different location, use `./install.sh --desktop-app "/absolute/path/to/Claude.app"`. Open ~/Applications/Claude Guard.app for pre-launch checks and pin it to the Dock. Rerun installation after updating Claude. Preferences, wrappers and backups are under ~/Library/Application Support/claude-geo-guard. The monitor runs as a user LaunchAgent. Use `--skip-desktop` to install only the CLI and hooks.
+
+## Linux prerequisites and paths
+
+Use Ubuntu 22.04+ or Debian 12+ with curl, CA certificates and iproute2. Desktop monitoring requires a systemd user session. Install zenity (GNOME) or kdialog (KDE) for denial dialogs. See the [Linux reference](usage.md#requirements) for optional tools and supported launcher types.
+
+Paths with normal XDG defaults:
 
 | Content | Location |
 |---|---|
