@@ -54,7 +54,7 @@ Install the OS `tzdata` package if a selected timezone is unavailable. Fully qui
 
 ## Updating
 
-Review the new source, run checks, then rerun installation. config.json is the only runtime preference source. If it is missing from an installed setup, create it using the README example or pass all four install flags explicitly; no settings are imported from the ownership manifest. The manifest preserves initial before-images and checks owned-file conflicts. System overrides are refreshed from their current package entries when still pristine. New executable paths are validated. Restart existing apps when updating so subprocesses and hooks use current code. Simultaneous package/user override edits require reconciliation; the installer will not guess.
+Review the new source, run checks, then rerun installation. config.json is the only runtime preference source. If it is missing from an installed setup, restore it from backup or pass `--country` and `--timezone` (use `inherit` for the system timezone). Omitted timings default to a 15-second interval and a 5-second grace period. Other missing preferences also return to defaults; no settings are imported from the ownership manifest. The manifest preserves initial before-images and checks owned-file conflicts. System overrides are refreshed from their current package entries when still pristine. New executable paths are validated. Restart existing apps when updating so subprocesses and hooks use current code. Simultaneous package/user override edits require reconciliation; the installer will not guess.
 
 ## Normal rollback
 

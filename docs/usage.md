@@ -128,10 +128,10 @@ Successful Desktop launches show a short **Claude connection verified** notifica
 
 See [network checks](network-checks.md) for the required providers, anonymous probes, and split-tunnel configuration.
 
-Installer ownership records and Base64 restoration copies remain private internal state under `~/.local/state/claude-geo-guard/manifest.json` and `backups/`. They are not runtime settings and do not belong in config.json. There is no legacy-settings fallback or migration layer. If an installed guard has no config.json, create the complete file above with your desired values before reinstalling, or provide all four options explicitly:
+Installer ownership records and Base64 restoration copies remain private internal state under `~/.local/state/claude-geo-guard/manifest.json` and `backups/`. They are not runtime settings and do not belong in config.json. There is no legacy-settings fallback or migration layer. If an installed guard has no config.json, create the complete file above with your desired values before reinstalling, or supply the country and timezone. If omitted during recovery, the interval defaults to 15 seconds and the termination grace period to 5 seconds:
 
 ```sh
-./install.sh --yes --country GB --timezone Europe/London --interval 15 --grace 5
+./install.sh --yes --country GB --timezone Europe/London
 ```
 
 Uninstall removes an untouched, installer-created config, but retains pre-existing or user-edited preferences, including edits made before a later reinstall. The [example config](../templates/config.json) shows first-install defaults.

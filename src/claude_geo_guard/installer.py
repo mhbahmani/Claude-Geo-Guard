@@ -77,10 +77,10 @@ def preflight(
     old = load_manifest(paths)
     config_raw = read(paths.guard_config)
     # Missing installed configuration is never silently replaced with defaults.
-    if old and config_raw is None and any(v is None for v in (country, timezone, interval, grace)):
+    if old and config_raw is None and (country is None or timezone is None):
         raise ValueError(
-            f"missing {paths.guard_config}; create it or provide all four install options: "
-            "--country CODE --timezone ZONE (or inherit) --interval SECONDS --grace SECONDS"
+            f"missing {paths.guard_config}; restore it or provide "
+            "--country CODE and --timezone ZONE (or inherit)"
         )
     current_config = config.parse(config_raw) if config_raw is not None else dict(config.DEFAULTS)
     chosen = dict(current_config)

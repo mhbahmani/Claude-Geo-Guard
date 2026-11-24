@@ -115,17 +115,27 @@ def test_config_edit_after_plan_aborts(environment):
     assert not paths.manifest.exists()
 
 
-def test_missing_installed_config_needs_explicit_settings(environment):
+@pytest.mark.parametrize(
+    "timings, expected",
+    [
+        ({}, (15, 5)),
+        ({"interval": 20}, (20, 5)),
+        ({"grace": 0}, (15, 0)),
+    ],
+)
+def test_recover_missing_installed_config(environment, timings, expected):
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))
     paths.guard_config.unlink()
     assert not checker.check(environ={}).allowed
-    with pytest.raises(ValueError, match="all four install options"):
+    with pytest.raises(ValueError, match="--country CODE and --timezone"):
         installer.preflight(paths)
     installer.install(
-        paths, installer.preflight(paths, country="GB", timezone="inherit", interval=15, grace=5)
+        paths, installer.preflight(paths, country="GB", timezone="Europe/London", **timings)
     )
-    assert config.load(paths) == config.DEFAULTS
+    assert config.load(paths) == dict(
+        config.DEFAULTS, timezone="Europe/London", interval=expected[0], grace=expected[1]
+    )
 
 
 def test_direct_edit_changes_installed_check_and_hook(environment, monkeypatch):
