@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+Verify anonymous destination traces from claude.ai and api.anthropic.com. General egress verification remains enabled by default. Add --split-tunnel for routed VPNs and reject local hosts-file overrides for protected domains.
+
 ## 0.2.0
 
 Adds a macOS Finder launcher and a user LaunchAgent for best-effort runtime checks. Installers select the latest GitHub release by default and master with `--dev`.
