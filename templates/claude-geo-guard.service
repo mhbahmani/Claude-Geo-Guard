@@ -1,0 +1,17 @@
+# Reference only. Installer generates a unit with the absolute, escaped guard path.
+[Unit]
+Description=Claude Geo Guard best-effort runtime monitor
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/claude-geo-guard/bin/claude-geo-guard monitor
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
