@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+Run `./install.sh` without flags for guided setup. Press Enter to accept the displayed default or keep your saved value on reinstall. The installer explains which destinations see your public IP and previews the changes before applying them. Use `--yes` for unattended installation.
+
+When recovering a missing config, the monitor interval defaults to 15 seconds and the termination grace period to 5 seconds. On Linux, reinstalling reapplies protection if a desktop launcher exactly matches its saved original. Unrecognized edits are preserved and the installer reports the conflicting file.
+
 ## 0.3.0
 
 Verify anonymous destination traces from claude.ai and api.anthropic.com. General egress verification remains enabled by default. Add --split-tunnel for routed VPNs and reject local hosts-file overrides for protected domains.
