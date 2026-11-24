@@ -77,7 +77,9 @@ def diagnostics(paths):
         if not report["monitor_active"]:
             issues.append("macOS monitor is inactive")
     report["desktop_error_dialog"] = backend("dialogs").available()
-    report["success_notifications_available"] = bool(shutil.which("notify-send"))
+    report["success_notifications_available"] = (
+        bool(report["desktop_error_dialog"]) if linux else bool(shutil.which("osascript"))
+    )
     try:
         entries = desktop_entries.discover(paths) if linux else []
         report["desktop_entries"] = [

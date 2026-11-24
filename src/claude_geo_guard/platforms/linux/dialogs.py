@@ -59,25 +59,37 @@ def egress_facts(verdict):
 
 
 def show_success(verdict):
-    """Brief confirmation; never changes the access decision or opens a dialog."""
+    """Open a timed confirmation alongside Claude in the graphical session."""
+    helper = available()
+    if not helper or not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return
     lines = [f"Country matches your setting: {verdict.allowed_country}"]
     lines += [f"{label}: {value}" for label, value in egress_facts(verdict)]
     if verdict.allowed_ips:
         lines.append("Public IP also matches your allowed IPs.")
+    message = "\n".join(lines)
+    title = "Claude connection verified"
+    if helper == "zenity":
+        command = [
+            helper,
+            "--info",
+            "--no-markup",
+            "--ok-label=OK",
+            "--timeout=5",
+            f"--title={title}",
+            f"--text={message}",
+        ]
+    else:
+        command = ["timeout", "--foreground", "5s", helper, "--title", title, "--msgbox", message]
     try:
-        subprocess.run(
-            [
-                "notify-send",
-                "--urgency=low",
-                "--expire-time=5000",
-                "Claude connection verified",
-                html.escape("\n".join(lines)),
-            ],
+        subprocess.Popen(
+            command,
             stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=2,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError:
         pass
 
 

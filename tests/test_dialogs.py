@@ -233,3 +233,19 @@ def test_runtime_dialog_force_stops_unresponsive_helper(monkeypatch):
     assert result.returncode == -9
     child.terminate.assert_called_once()
     child.kill.assert_called_once()
+
+
+@pytest.mark.parametrize("helper", ["zenity", "kdialog"])
+def test_success_popup_has_timeout_and_ok_button(monkeypatch, helper):
+    monkeypatch.setenv("DISPLAY", ":test")
+    monkeypatch.setattr(dialogs, "available", lambda: helper)
+    spawn = Mock()
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    dialogs.show_success(Verdict(True, "verified", {4: "GB"}, "GB"))
+    args = spawn.call_args.args[0]
+    if helper == "zenity":
+        assert "--timeout=5" in args and "--ok-label=OK" in args
+    else:
+        assert args[:4] == ["timeout", "--foreground", "5s", "kdialog"]
+        assert "--msgbox" in args
+    spawn.return_value.wait.assert_not_called()

@@ -65,7 +65,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     report = subprocess.run([str(guard), "doctor"], capture_output=True, text=True)
     assert report.returncode == 0, report.stdout + report.stderr
     assert json.loads(report.stdout)["hooks_registered"]
-    (environment["bins"] / "notify-send").write_text(
+    helper.write_text(
         "#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\n"
         '(Path(os.environ["HOME"]) / "success-message.json").write_text(json.dumps(sys.argv[1:]))\n'
     )
@@ -75,7 +75,10 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             try:
-                if os.readlink(f"/proc/{app.pid}/exe") == str(environment["desktop"]):
+                if (
+                    os.readlink(f"/proc/{app.pid}/exe") == str(environment["desktop"])
+                    and (paths.home / "success-message.json").exists()
+                ):
                     break
             except FileNotFoundError:
                 pass

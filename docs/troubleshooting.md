@@ -6,7 +6,7 @@ Start with `claude-geo-guard doctor`, `type -a claude`, and `systemctl --user st
 |---|---|
 | Desktop does not open and no error window appears | Reinstall the updated guard with `./install.sh --yes`. Install `zenity` (GNOME) or `kdialog` (KDE) and launch through Applications in a graphical session. `doctor` reports the installed dialog helper; this does not prove a window can be displayed. If the helper fails, stderr and an attempted critical notification remain available. |
 | Country matches but IP is denied | Check `allowed_ips` in config.json. Every usable IPv4/IPv6 family must have its returned address listed. `[]` disables only IP matching. |
-| Success message missing | Check `success_notifications`, install `libnotify-bin`, and review Do Not Disturb settings. Success confirmations are notifications; denials remain windows. |
+| Success message missing | Check `success_notifications` and the availability of Zenity or KDialog in your graphical session. |
 | Window says allowed GB, detected PL | The guard is working: the provider reports Poland for that address family. For a denial test this is expected. To allow a launch, the connection must verify the configured country. Dismissing the window does not override the policy. |
 | Timezone change has no visible effect | Fully quit Desktop and relaunch through Applications, or start a new CLI session. A new window may reuse the old process. Components that ignore TZ are not controlled by this setting. |
 | Timezone rejected | Use a case-sensitive IANA name such as Europe/London and ensure the OS tzdata package is installed. `set-timezone inherit` clears the override. |

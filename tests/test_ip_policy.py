@@ -144,7 +144,9 @@ def test_display_returned_ip_without_matcher(allowed, monkeypatch):
     verdict = checker.Verdict(allowed, "test", {4: "GB"}, "GB", {4: IP4})
     if allowed:
         run = Mock()
-        monkeypatch.setattr(subprocess, "run", run)
+        monkeypatch.setenv("DISPLAY", ":test")
+        monkeypatch.setattr(dialogs, "available", lambda: "zenity")
+        monkeypatch.setattr(subprocess, "Popen", run)
         dialogs.show_success(verdict)
         assert IP4 in run.call_args.args[0][-1]
         assert "Country matches your setting: GB" in run.call_args.args[0][-1]
@@ -190,5 +192,7 @@ def test_only_enabled_guarded_launch_shows_success(environment, monkeypatch, ena
 
 
 def test_notification_failure_never_changes_access(monkeypatch):
-    monkeypatch.setattr(subprocess, "run", Mock(side_effect=FileNotFoundError()))
+    monkeypatch.setenv("DISPLAY", ":test")
+    monkeypatch.setattr(dialogs, "available", lambda: "zenity")
+    monkeypatch.setattr(subprocess, "Popen", Mock(side_effect=FileNotFoundError()))
     dialogs.show_success(checker.Verdict(True, "verified", {4: "GB"}, "GB", {4: IP4}))
