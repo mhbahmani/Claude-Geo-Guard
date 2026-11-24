@@ -304,7 +304,7 @@ Run ShellCheck, Python lint/format/unit/integration checks, Linux desktop valida
 
 - README: concise purpose, honest support matrix, one quick start per OS, configuration example, uninstall, diagram and links to detailed docs. Avoid duplicating the full config reference and test record.
 - Add `docs/index.md`; split Linux/Mac specifics and manual acceptance from common architecture/security/configuration. Update all moved links. Keep this handoff under `docs/plans/` rather than presenting future capabilities as current features.
-- Keep MIT license, no invented author/organization, no fake badges or passing-CI claims. Use project-owned artwork and accurate descriptions of vendor trademarks.
+- Keep the Apache 2.0 license, no invented author/organization, no fake badges or passing-CI claims. Use project-owned artwork and accurate descriptions of vendor trademarks.
 - Audit version/name consistency, console entry point, classifiers, requirements and package contents. Advertise macOS only after passing its gates; mark partial capabilities experimental explicitly.
 - Audit tracked/release files for real usernames, home paths, configured IPs, tokens, logs, backup manifests and provider responses. Use synthetic fixtures and placeholder paths in public documentation. Preserve the user's local files; remove sensitive content from release inputs rather than blindly deleting files.
 - Keep `.venv`, caches, `dist`, `build`, egg-info, native build outputs, `.DS_Store`, local logs and installation artifacts out of version control. Do not include generated binaries in source unless intentionally released with provenance.
