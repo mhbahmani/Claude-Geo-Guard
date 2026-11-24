@@ -26,11 +26,29 @@ def test_symlink_recursion(environment, tmp_path):
         cl.discover(paths.bin, str(link))
 
 
-@pytest.mark.parametrize("text", ["2.1.294", "1.0.0", "garbage", "2.1.295-beta"])
-def test_unsupported_version(environment, text):
+@pytest.mark.parametrize(
+    "text,message",
+    [
+        ("2.1.294 (Claude Code)", "Detected Claude Code CLI 2.1.294"),
+        ("1.0.0", "Detected Claude Code CLI 1.0.0"),
+        ("garbage", "Cannot verify"),
+        ("2.1.295-beta", "Cannot verify"),
+        ("", "Cannot verify"),
+    ],
+)
+def test_unsupported_version(environment, text, message):
     binary = script(environment["bins"] / "old", f"print({text!r})\n")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as error:
         cl.version(binary)
+    assert message in str(error.value)
+    assert str(binary) in str(error.value)
+    assert text in str(error.value) or message.startswith("Detected")
+
+
+@pytest.mark.parametrize("text", ["2.1.295 (Claude Code)", "2.1.300", "2.2.0 (Claude Code)"])
+def test_supported_version(environment, text):
+    binary = script(environment["bins"] / "claude", f"print({text!r})\n")
+    assert cl.version(binary) == text
 
 
 def test_launch_argv(environment, monkeypatch):

@@ -41,8 +41,17 @@ def version(binary):
         [str(binary), "--version"], capture_output=True, text=True, timeout=5, check=True
     ).stdout
     match = re.fullmatch(r"\s*(\d+)\.(\d+)\.(\d+)(?:\s+\(Claude Code\))?\s*", output)
-    if not match or tuple(map(int, match.groups())) < MIN_VERSION:
-        raise ValueError("Claude Code >=2.1.295 required for fail-closed hooks; update Claude Code")
+    if not match:
+        raise ValueError(
+            f"Cannot verify the Claude Code CLI version from {binary} --version "
+            f"(stdout: {ascii(output.strip()[:160])}). Check the selected executable."
+        )
+    if tuple(map(int, match.groups())) < MIN_VERSION:
+        required = ".".join(map(str, MIN_VERSION))
+        raise ValueError(
+            f"Detected Claude Code CLI {'.'.join(match.groups())} at {binary}. "
+            f"Version {required} or later is required for fail-closed hooks. Update that CLI."
+        )
     return output.strip()
 
 
