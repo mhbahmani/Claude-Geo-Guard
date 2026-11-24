@@ -89,7 +89,7 @@ def tick(
                 "allowed_country": verdict.allowed_country,
                 "reason": verdict.reason,
                 "countries": verdict.countries,
-                "provider": "ifconfig.io",
+                "provider": "Claude edge traces (plus ifconfig.io in full mode)",
                 "process_count": len(processes),
             }
         )

@@ -8,9 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 
 from .platforms import snapshot
-from . import config
+from . import config, dns_guard
 from .policy import COUNTRIES, normalize_country
 
+TRACE_HOSTS = ("claude.ai", "api.anthropic.com")
 ENDPOINT = "https://ifconfig.io/all.json"
 
 
@@ -24,6 +25,8 @@ class Verdict:
     ips: dict[int, str] = field(default_factory=dict)
     allowed_ips: list[str] = field(default_factory=list)
     errors: dict[int, str] = field(default_factory=dict)
+
+    observations: dict = field(default_factory=dict)
 
     def as_dict(self):
         return asdict(self)
@@ -50,7 +53,9 @@ def _http_status(output):
     return None
 
 
-def query(family: int) -> Egress:
+def query(family: int, host=None) -> Egress:
+    if host is not None and host not in TRACE_HOSTS:
+        raise ValueError("unknown trace host")
     try:
         result = subprocess.run(
             [
@@ -72,9 +77,19 @@ def query(family: int) -> Egress:
                 "--show-error",
                 "--write-out",
                 "\n%{http_code}",
-                ENDPOINT,
+                "--header",
+                "Authorization:",
+                "--header",
+                "Cookie:",
+                "--header",
+                "Proxy-Authorization:",
+                "--header",
+                "x-api-key:",
+                ENDPOINT if host is None else f"https://{host}/cdn-cgi/trace",
             ],
             capture_output=True,
+            env={"PATH": os.environ.get("PATH", os.defpath), "LC_ALL": "C"},
+            stdin=subprocess.DEVNULL,
             timeout=8,
             check=True,
         )
@@ -112,23 +127,34 @@ def query(family: int) -> Egress:
         )
     if len(body) > 4096:
         raise ProviderFailure(f"IPv{family}: provider response exceeded size limit")
-    try:
-        data = json.loads(
-            body.decode("utf-8"),
-            object_pairs_hook=_unique_response,
-            parse_constant=_reject_constant,
-        )
-    except (ValueError, UnicodeDecodeError):
-        raise ProviderFailure(f"IPv{family}: provider returned invalid JSON") from None
-    if not isinstance(data, dict):
-        raise ProviderFailure(f"IPv{family}: provider response is not an object")
+    if host is not None:
+        try:
+            fields = _unique_response(
+                line.split("=", 1) for line in body.decode("ascii").splitlines()
+            )
+        except ValueError:
+            raise ProviderFailure(f"IPv{family}: malformed edge trace") from None
+        if fields.get("h") != host:
+            raise ProviderFailure(f"IPv{family}: unexpected trace hostname")
+        data = {"country_code": fields.get("loc"), "ip": fields.get("ip")}
+    else:
+        try:
+            data = json.loads(
+                body.decode("utf-8"),
+                object_pairs_hook=_unique_response,
+                parse_constant=_reject_constant,
+            )
+        except (ValueError, UnicodeDecodeError):
+            raise ProviderFailure(f"IPv{family}: provider returned invalid JSON") from None
+        if not isinstance(data, dict):
+            raise ProviderFailure(f"IPv{family}: provider response is not an object")
     raw_country = data.get("country_code")
     country = raw_country.strip().upper() if isinstance(raw_country, str) else None
     country = country if country in COUNTRIES else None
     ip = None
     try:
         address = ipaddress.ip_address(config.normalize_ip(data.get("ip")))
-        if address.version == family and address.is_global:
+        if address.version == family and address.is_global and not address.is_multicast:
             ip = str(address)
     except ValueError:
         pass
@@ -154,7 +180,7 @@ def _unique_response(pairs):
     return data
 
 
-def check(*, routes=snapshot, request=query, environ=None, allowed_country=None) -> Verdict:
+def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) -> Verdict:
     try:
         preferences = config.load()
         target = (
@@ -169,8 +195,10 @@ def check(*, routes=snapshot, request=query, environ=None, allowed_country=None)
         )
     countries, ips, errors = {}, {}, {}
 
+    observations = {}
+
     def verdict(allowed, reason):
-        return Verdict(allowed, reason, countries, target, ips, allowed_ips, errors)
+        return Verdict(allowed, reason, countries, target, ips, allowed_ips, errors, observations)
 
     env = os.environ if environ is None else environ
     if any(
@@ -186,12 +214,27 @@ def check(*, routes=snapshot, request=query, environ=None, allowed_country=None)
     ):
         return verdict(False, "proxy environment is ambiguous; use a routed VPN")
     try:
+        try:
+            dns_guard.check_hosts()
+        except (ValueError, OSError):
+            return verdict(False, "protected domain override or unreadable /etc/hosts")
         before = routes()
         if not before.families:
             return verdict(False, "no usable public routes")
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            pending = {family: pool.submit(request, family) for family in before.families}
-            for family, task in pending.items():
+        hosts = [*TRACE_HOSTS] if preferences["split_tunnel"] else [*TRACE_HOSTS, None]
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            if request is None:
+                pending = {
+                    (family, host): pool.submit(query, family, host)
+                    for family in before.families
+                    for host in hosts
+                }
+            else:
+                pending = {
+                    (family, None): pool.submit(request, family) for family in before.families
+                }
+            for (family, host), task in pending.items():
+                provider = host or "ifconfig.io"
                 try:
                     result = task.result()
                     if (
@@ -201,29 +244,43 @@ def check(*, routes=snapshot, request=query, environ=None, allowed_country=None)
                     ):
                         raise ValueError("invalid country result")
                     address = ipaddress.ip_address(config.normalize_ip(result.ip))
-                    if address.version != family or not address.is_global:
+                    if address.version != family or not address.is_global or address.is_multicast:
                         raise ValueError("invalid public IP result")
-                    countries[family], ips[family] = result.country, str(address)
+                    observations.setdefault(provider, {})[family] = {
+                        "country": result.country,
+                        "ip": str(address),
+                    }
+                    if (
+                        family not in countries
+                        or result.country != target
+                        or (allowed_ips and str(address) not in allowed_ips)
+                    ):
+                        countries[family], ips[family] = result.country, str(address)
                 except ProviderFailure as error:
                     if error.country is not None:
                         countries[family] = error.country
                     if error.ip is not None:
                         ips[family] = error.ip
-                    errors[family] = str(error)
+                    errors[family] = f"{provider}: {error}"
                 except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                     errors[family] = f"IPv{family}: verification failed ({type(error).__name__})"
         if errors:
             return verdict(False, "verification failed: " + "; ".join(errors.values()))
+        dns_guard.check_hosts()
         if before != routes():
             return verdict(False, "network changed during verification")
         current = config.load()
-        if (allowed_country is None and current["allowed_country"] != target) or current[
-            "allowed_ips"
-        ] != allowed_ips:
+        if (
+            (allowed_country is None and current["allowed_country"] != target)
+            or current["allowed_ips"] != allowed_ips
+            or current["split_tunnel"] != preferences["split_tunnel"]
+        ):
             return verdict(False, "country or IP policy changed during verification; retry")
-        if any(country != target for country in countries.values()):
+        if any(o["country"] != target for group in observations.values() for o in group.values()):
             return verdict(False, f"egress outside configured country {target}")
-        if allowed_ips and any(ip not in allowed_ips for ip in ips.values()):
+        if allowed_ips and any(
+            o["ip"] not in allowed_ips for group in observations.values() for o in group.values()
+        ):
             return verdict(False, "public IP does not match configured allowed_ips")
         return verdict(
             True,

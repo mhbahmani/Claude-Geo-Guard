@@ -118,7 +118,7 @@ def test_real_adapter_with_fake_utilities(environment, monkeypatch):
     monkeypatch.setenv("FAKE_IPV6", "1")
     assert snapshot().families == (4, 6)
     assert check().allowed
-    monkeypatch.setenv("FAKE_COUNTRY6", "DE")
+    (environment["bins"] / "FAKE_COUNTRY6").write_text("DE")
     assert not check().allowed
 
 

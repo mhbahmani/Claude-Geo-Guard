@@ -132,7 +132,7 @@ def test_direct_edit_changes_installed_check_and_hook(environment, monkeypatch):
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))
     guard = str(paths.bin / "claude-geo-guard")
-    monkeypatch.setenv("FAKE_COUNTRY", "DE")
+    (environment["bins"] / "FAKE_COUNTRY").write_text("DE")
     assert subprocess.run([guard, "hook"], capture_output=True).returncode == 2
     save(paths, allowed_country="DE")
     for command in ("check", "hook"):

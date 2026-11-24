@@ -16,6 +16,7 @@ DEFAULTS = {
     "grace": 5,
     "allowed_ips": [],
     "success_notifications": True,
+    "split_tunnel": False,
 }
 REQUIRED = {"allowed_country", "timezone", "interval", "grace"}
 
@@ -48,13 +49,16 @@ def validate(data):
         raise ValueError("config.json is missing: " + ", ".join(sorted(missing)))
     if unknown:
         raise ValueError(
-            "config.json has unknown keys; use allowed_country, timezone, interval, grace, allowed_ips, success_notifications"
+            "config.json has unknown keys; use allowed_country, timezone, interval, grace, allowed_ips, success_notifications, split_tunnel"
         )
     allowed_ips = data.get("allowed_ips", [])
     if not isinstance(allowed_ips, list):
         raise ValueError(
             "allowed_ips must be an array of exact addresses, or [] to disable IP matching"
         )
+    split_tunnel = data.get("split_tunnel", False)
+    if not isinstance(split_tunnel, bool):
+        raise ValueError("split_tunnel must be true or false")
     notifications = data.get("success_notifications", True)
     if not isinstance(notifications, bool):
         raise ValueError("success_notifications must be true or false (Desktop launches only)")
@@ -65,6 +69,7 @@ def validate(data):
         "grace": validate_timing("grace", data["grace"]),
         "allowed_ips": sorted(set(normalize_ip(value) for value in allowed_ips)),
         "success_notifications": notifications,
+        "split_tunnel": split_tunnel,
     }
 
 

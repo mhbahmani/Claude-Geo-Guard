@@ -129,7 +129,7 @@ def test_denial_explains_allowed_and_observed_countries(environment, monkeypatch
     assert "Allowed country: GB" in str(error.value)
     assert "Detected IPv4 country: PL" in str(error.value)
     assert "Detected IPv6 country: GB" in str(error.value)
-    assert "ifconfig.io" in str(error.value)
+    assert "Claude edge traces (plus ifconfig.io in full mode)" in str(error.value)
     execute.assert_not_called()
 
 

@@ -257,3 +257,13 @@ def test_invalid_crlf_entry_preserved(environment):
     with pytest.raises(ValueError, match="CRLF"):
         installer.preflight(paths)
     assert target.read_bytes() == original
+
+
+def test_install_mode_persists_and_can_be_disabled(environment):
+    from claude_geo_guard import config
+
+    paths = environment["paths"]
+    installer.install(paths, installer.preflight(paths, skip_desktop=True, split_tunnel=True))
+    assert installer.preflight(paths, skip_desktop=True)["split_tunnel"]
+    installer.install(paths, installer.preflight(paths, skip_desktop=True, split_tunnel=False))
+    assert not config.load(paths)["split_tunnel"]

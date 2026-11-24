@@ -37,7 +37,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     assert version.returncode == 0 and "2.1.295" in version.stdout
     monkeypatch.setenv("FAKE_EXIT", "17")
     assert subprocess.run([str(cli)], capture_output=True).returncode == 17
-    monkeypatch.setenv("FAKE_COUNTRY", "US")
+    (environment["bins"] / "FAKE_COUNTRY").write_text("US")
     assert subprocess.run([str(cli)], capture_output=True).returncode == 2
     assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 2
     # Exercise the installed desktop denial path and its window, without a real display.
@@ -60,7 +60,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     assert "--ok-label=Close" in dialog_args
     assert "Allowed country: <b>GB</b>" in dialog_args[-1]
     assert "Detected IPv4: <b>US · 1.1.1.1</b>" in dialog_args[-1]
-    monkeypatch.setenv("FAKE_COUNTRY", "GB")
+    (environment["bins"] / "FAKE_COUNTRY").write_text("GB")
     assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 0
     report = subprocess.run([str(guard), "doctor"], capture_output=True, text=True)
     assert report.returncode == 0, report.stdout + report.stderr
@@ -101,7 +101,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
 def test_live_monitor_kills_only_protected_native_process(environment, monkeypatch):
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))
-    monkeypatch.setenv("FAKE_CURL_EXIT", "28")
+    (environment["bins"] / "FAKE_CURL_EXIT").write_text("28")
     monkeypatch.setenv("DISPLAY", ":fake-monitor-display")
     monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
     (environment["bins"] / "zenity").write_text(

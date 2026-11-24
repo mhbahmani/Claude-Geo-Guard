@@ -59,9 +59,21 @@ else:
         bins / "curl",
         """import json, os, sys
 family6 = "-6" in sys.argv
-sys.stdout.write(json.dumps({"country_code": os.environ.get("FAKE_COUNTRY6" if family6 else "FAKE_COUNTRY", "GB"), "ip": os.environ.get("FAKE_IP6" if family6 else "FAKE_IP", "2606:4700:4700::1111" if family6 else "1.1.1.1")}))
+from pathlib import Path
+def setting(name, default):
+    file = Path(__file__).with_name(name)
+    return file.read_text() if file.exists() else default
+country = setting("FAKE_COUNTRY6" if family6 else "FAKE_COUNTRY", "GB")
+ip = "2606:4700:4700::1111" if family6 else "1.1.1.1"
+if sys.argv[-1].endswith("/cdn-cgi/trace"):
+    from urllib.parse import urlsplit
+    print("h="+urlsplit(sys.argv[-1]).hostname)
+    print("loc="+country)
+    print("ip="+ip)
+else:
+    sys.stdout.write(json.dumps({"country_code":country,"ip":ip}))
 sys.stdout.write("\\n200")
-sys.exit(int(os.environ.get("FAKE_CURL_EXIT", "0")))
+sys.exit(int(setting("FAKE_CURL_EXIT","0")))
 """,
     )
     script(

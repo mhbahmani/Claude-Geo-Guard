@@ -131,7 +131,7 @@ def test_cli_hooks_desktop_and_monitor_use_updated_policy(environment, monkeypat
     guard = str(paths.bin / "claude-geo-guard")
     cli = str(paths.bin / "claude")
     monkeypatch.setenv("PATH", f"{paths.bin}:{os.environ['PATH']}")
-    monkeypatch.setenv("FAKE_COUNTRY", "DE")
+    (environment["bins"] / "FAKE_COUNTRY").write_text("DE")
     for args in (
         [guard, "check"],
         [guard, "hook"],
@@ -159,6 +159,6 @@ def test_cli_hooks_desktop_and_monitor_use_updated_policy(environment, monkeypat
         [guard, "desktop", "--", str(environment["desktop"]), "0"],
     ):
         assert subprocess.run(args, capture_output=True).returncode == 2
-    monkeypatch.setenv("FAKE_COUNTRY", "FR")
+    (environment["bins"] / "FAKE_COUNTRY").write_text("FR")
     assert subprocess.run([guard, "hook"], capture_output=True).returncode == 0
     installer.uninstall(paths)

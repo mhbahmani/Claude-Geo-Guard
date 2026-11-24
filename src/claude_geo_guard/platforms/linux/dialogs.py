@@ -133,7 +133,7 @@ def describe(error, *, runtime=False):
                 facts.append(("Allowed country", verdict.allowed_country))
             facts.extend(egress_facts(verdict))
             facts.append(("IP filter", "Enabled" if verdict.allowed_ips else "Off"))
-            facts.append(("Country provider", "ifconfig.io"))
+            facts.append(("Country provider", "Claude edge traces (plus ifconfig.io in full mode)"))
     if runtime:
         heading = "Claude was closed by the guard"
         explanation = explanation.replace("stayed closed", "was closed")

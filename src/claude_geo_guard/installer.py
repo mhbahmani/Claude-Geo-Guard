@@ -62,6 +62,7 @@ def preflight(
     interval=None,
     grace=None,
     country=None,
+    split_tunnel=None,
     timezone=None,
     desktop_app=None,
 ):
@@ -85,6 +86,7 @@ def preflight(
     chosen = dict(current_config)
     for key, value in (
         ("allowed_country", country),
+        ("split_tunnel", split_tunnel),
         ("timezone", timezone),
         ("interval", interval),
         ("grace", grace),
@@ -188,6 +190,7 @@ def preflight(
         "config_raw": config_raw,
         "config_data": config_data,
         "config_path": str(paths.guard_config),
+        "split_tunnel": chosen["split_tunnel"],
         "allowed_ips": chosen["allowed_ips"],
         "success_notifications": chosen["success_notifications"],
         "environment": inspect_environment(paths),
@@ -212,6 +215,7 @@ def summary(plan):
         "allowed_country": plan["allowed_country"],
         "timezone": plan["timezone"],
         "config_file": plan["config_path"],
+        "split_tunnel": plan["split_tunnel"],
         "allowed_ips": plan["allowed_ips"],
         "success_notifications": plan["success_notifications"],
         "grace": plan["grace"],

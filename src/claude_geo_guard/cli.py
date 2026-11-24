@@ -25,6 +25,12 @@ def parser():
     sub.add_parser("status")
     sub.add_parser("doctor")
     install = sub.add_parser("install")
+    install.add_argument(
+        "--split-tunnel",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="check only the two Claude destinations instead of also checking general egress",
+    )
     install.add_argument("--dry-run", action="store_true")
     install.add_argument("--yes", action="store_true")
     install.add_argument("--claude-binary", type=str)
@@ -94,6 +100,7 @@ def main(argv=None):
                 interval=args.interval,
                 grace=args.grace,
                 country=args.country,
+                split_tunnel=args.split_tunnel,
                 timezone=args.timezone,
                 desktop_app=args.desktop_app,
             )

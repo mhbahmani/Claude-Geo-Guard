@@ -107,7 +107,7 @@ def test_country_summary_has_hierarchy_and_recovery():
         ("Detected IPv4", "PL · IP not returned"),
         ("Detected IPv6", "GB · IP not returned"),
         ("IP filter", "Off"),
-        ("Country provider", "ifconfig.io"),
+        ("Country provider", "Claude edge traces (plus ifconfig.io in full mode)"),
     )
     assert "Applications" in message.next_step
     assert "claude-geo-guard doctor" not in message.plain()

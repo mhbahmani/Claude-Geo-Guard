@@ -46,7 +46,7 @@ def launch(paths, args):
             details.append(
                 f"Detected IPv{family} country: {country}; IP: {verdict.ips.get(family, 'not returned')}"
             )
-        details.append("Country provider: ifconfig.io")
+        details.append("Country provider: Claude edge traces (plus ifconfig.io in full mode)")
         raise LaunchBlocked("\n".join(details), kind="verification", verdict=verdict)
     environment = launch_environment(paths)
     if config.load(paths)["success_notifications"]:

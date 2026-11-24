@@ -4,5 +4,6 @@
   "interval": 15,
   "grace": 5,
   "allowed_ips": [],
+  "split_tunnel": false,
   "success_notifications": true
 }
