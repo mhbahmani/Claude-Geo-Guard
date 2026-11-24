@@ -4,7 +4,7 @@ Use Python 3.10+ on Linux. Keep runtime dependencies limited to the standard lib
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pip install -r requirements/dev.txt
 make check
 make package
 ```

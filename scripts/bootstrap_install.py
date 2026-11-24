@@ -16,7 +16,13 @@ def main(args):
     if "--help" in args or "-h" in args:
         print("--dev selects master; the default is the latest published release.")
         return subprocess.call(
-            [sys.executable, "-IB", str(Path(__file__).with_name("run.py")), "install", "--help"]
+            [
+                sys.executable,
+                "-IB",
+                str(Path(__file__).resolve().parents[1] / "run.py"),
+                "install",
+                "--help",
+            ]
         )
     if "--dev" in args:
         args = [a for a in args if a != "--dev"]

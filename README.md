@@ -235,7 +235,7 @@ See [installation and recovery](docs/installation.md) and [troubleshooting](docs
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pip install -r requirements/dev.txt
 make check
 make package
 ```
@@ -244,7 +244,7 @@ Tests use temporary HOME/XDG directories, fake network/systemd commands and nati
 
 See the [actual validation record](docs/validation.md) for performed checks and outstanding acceptance work.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the [manual desktop checklist](docs/desktop-testing.md). See [architecture](docs/architecture.md) for module responsibilities and future network isolation work. MIT licensed; independent project, not affiliated with Anthropic.
+Read [CONTRIBUTING.md](.github/CONTRIBUTING.md), [SECURITY.md](.github/SECURITY.md), and the [manual desktop checklist](docs/desktop-testing.md). See [architecture](docs/architecture.md) for module responsibilities and future network isolation work. MIT licensed; independent project, not affiliated with Anthropic.
 
 ## Primary references
 

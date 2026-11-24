@@ -6,7 +6,9 @@ from pathlib import Path
 
 def test_installs_published_tag_or_master(tmp_path, monkeypatch):
     root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location("bootstrap", root / "bootstrap_install.py")
+    spec = importlib.util.spec_from_file_location(
+        "bootstrap", root / "scripts/bootstrap_install.py"
+    )
     bootstrap = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bootstrap)
     repo = tmp_path / "repo"

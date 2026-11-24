@@ -1,6 +1,6 @@
 # Security
 
-This is a cooperating-user, best-effort guard. It is not kernel-level network enforcement. Read [the security model](docs/security-model.md) before use. Version 0.1.x is the initial implementation; no unsupported platform or remote-session guarantee is made.
+This is a cooperating-user, best-effort guard. It is not kernel-level network enforcement. Read [the security model](../docs/security-model.md) before use. Version 0.1.x is the initial implementation; no unsupported platform or remote-session guarantee is made.
 
 Report suspected vulnerabilities through the repository host's private vulnerability reporting feature when the published repository enables it. Until a private reporting route is available, avoid posting exploit details, credentials, settings or backup journals in public issues; ask for a private contact route using a minimal description. No maintainer identity or private contact address is assumed here.
 
