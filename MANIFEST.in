@@ -1,5 +1,5 @@
 include LICENSE README.md .github/CONTRIBUTING.md .github/SECURITY.md
-include scripts/bootstrap_install.py install.sh uninstall.sh run.py Makefile requirements/dev.txt
+include install.sh uninstall.sh run.py Makefile requirements/dev.txt
 recursive-include docs *.md
 recursive-include templates *.service *.json
 recursive-include tests *.py

@@ -4,13 +4,13 @@ Check the public country and IP before opening Claude Code or Claude Desktop on 
 
 ## Install
 
-With Git, Python 3.10+ and Claude Code 2.1.295+ installed, run this in a terminal as your regular user:
+With curl, Python 3.10+ and Claude Code 2.1.295+ installed, run this in a terminal as your regular user:
 
 ```sh
-git clone https://github.com/mhbahmani/Claude-Geo-Guard.git && cd Claude-Geo-Guard && ./install.sh
+curl -fsSL https://raw.githubusercontent.com/mhbahmani/Claude-Geo-Guard/master/install.sh | sh
 ```
 
-The installer previews its changes and asks for confirmation. It installs the **latest release** and defaults to **GB**. To select another country, add `--country DE` (or your country code) to the install command. Use `--skip-desktop` for CLI and hooks only, or `--dev` for master.
+The installer previews its changes and asks for confirmation. It installs the **latest release** and defaults to **GB**. To pass options, replace the final `sh` with `sh -s -- --country DE` (choose your country), `sh -s -- --skip-desktop` (CLI only), or `sh -s -- --dev` (master).
 
 ## After installation
 

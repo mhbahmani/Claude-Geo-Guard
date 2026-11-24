@@ -1,45 +1,54 @@
-import importlib.util
 import io
-import subprocess
+import json
+import os
 from pathlib import Path
+import subprocess
+import sys
+import tarfile
+
+import pytest
 
 
-def test_installs_published_tag_or_master(tmp_path, monkeypatch):
-    root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location(
-        "bootstrap", root / "scripts/bootstrap_install.py"
+@pytest.mark.parametrize("dev", [True, False])
+def test_piped_install_from_empty_directory(tmp_path, monkeypatch, dev):
+    script = (Path(__file__).resolve().parents[1] / "install.sh").read_bytes()
+    work = tmp_path / "empty"
+    work.mkdir()
+    urls = tmp_path / "urls"
+    monkeypatch.setenv("URLS", str(urls))
+    archive = tmp_path / "archive"
+    monkeypatch.setenv("ARCHIVE", str(archive))
+    with tarfile.open(archive, "w:gz") as tar:
+        for name, data in {
+            "run.py": b"import json,sys;print(json.dumps(sys.argv[1:]))",
+            "src/claude_geo_guard/cli.py": b"",
+        }.items():
+            member = tarfile.TarInfo("source/" + name)
+            member.size = len(data)
+            tar.addfile(member, io.BytesIO(data))
+    curl = tmp_path / "curl"
+    curl.write_text(
+        "#!"
+        + sys.executable
+        + "\n"
+        + """import sys,os,shutil
+with open(os.environ['URLS'],'a') as out: print(sys.argv[-1],file=out)
+if '--output' in sys.argv: shutil.copyfile(os.environ['ARCHIVE'],sys.argv[sys.argv.index('--output')+1])
+else: print('{"tag_name":"v0.2.0"}')
+"""
     )
-    bootstrap = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(bootstrap)
-    repo = tmp_path / "repo"
-    subprocess.run(["git", "init", "-q", "-b", "master", str(repo)], check=True)
-    result = tmp_path / "result"
-    for value in ("release", "dev"):
-        (repo / "run.py").write_text(
-            f"import pathlib,sys\nassert sys.argv[1:] == ['install','--yes']\n"
-            f"pathlib.Path({str(result)!r}).write_text({value!r})\n"
-        )
-        subprocess.run(["git", "-C", str(repo), "add", "run.py"], check=True)
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo),
-                "-c",
-                "user.name=Test",
-                "-c",
-                "user.email=test@example.org",
-                "commit",
-                "-qm",
-                value,
-            ],
-            check=True,
-        )
-        if value == "release":
-            subprocess.run(["git", "-C", str(repo), "tag", "v1"], check=True)
-    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
-    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{repo.as_uri()}.insteadOf")
-    monkeypatch.setenv("GIT_CONFIG_VALUE_0", f"https://github.com/{bootstrap.REPO}.git")
-    monkeypatch.setattr(bootstrap, "urlopen", lambda *a, **kw: io.BytesIO(b'{"tag_name":"v1"}'))
-    assert bootstrap.main(["--yes"]) == 0 and result.read_text() == "release"
-    assert bootstrap.main(["--yes", "--dev"]) == 0 and result.read_text() == "dev"
+    curl.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + ":" + os.environ["PATH"])
+    args = ["--yes", "--country", "DE"]
+    result = subprocess.run(
+        ["sh", "-s", "--", *args, *(["--dev"] if dev else [])],
+        cwd=work,
+        input=script,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(result.stdout) == ["install", *args]
+    requests = urls.read_text().splitlines()
+    assert requests[-1].endswith("refs/heads/master" if dev else "refs/tags/v0.2.0")
+    assert len(requests) == (1 if dev else 2)
+    assert not list(work.iterdir())

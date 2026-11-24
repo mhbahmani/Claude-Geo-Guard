@@ -2,6 +2,14 @@
 
 Install Claude Desktop and Claude Code using Anthropic's supported installation instructions first. Their installer/package management is outside this project's scope. Run the guard installer as the owning desktop user. Never use sudo for this project.
 
+From any directory, preview the latest release without cloning the repository:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mhbahmani/Claude-Geo-Guard/master/install.sh | sh -s -- --dry-run
+```
+
+Omit `-s -- --dry-run` for interactive installation, or pass options after `sh -s --`. The bootstrap fetches source over HTTPS, runs the installer from a temporary directory, and removes the download on exit. When running from a checkout, the equivalent commands are:
+
 ```sh
 ./install.sh --dry-run
 ./install.sh --yes --country GB
