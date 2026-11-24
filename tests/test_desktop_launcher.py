@@ -180,3 +180,19 @@ def test_action_targeting_unrelated_program_refused(environment):
     entry.text = entry.text.replace(f'Exec="{environment["desktop"]}" %u', "Exec=/bin/true")
     with pytest.raises(ValueError, match="action executable differs"):
         intercept(entry, environment["paths"].bin / "claude-geo-guard")
+
+
+def test_launch_starts_stopped_monitor(environment, monkeypatch):
+    paths = environment["paths"]
+    args = [str(environment["desktop"])]
+    atomic_write(paths.manifest, json_bytes({"binaries": args}))
+    atomic_write(paths.guard_config, json_bytes(dict(config.DEFAULTS, success_notifications=False)))
+    start = Mock(return_value=True)
+    monkeypatch.setattr(systemd, "best_effort", start)
+    monkeypatch.setattr(systemd, "active", Mock(side_effect=[False, True]))
+    monkeypatch.setattr(desktop_launcher, "check", lambda: Verdict(True, "verified", {}))
+    execute = Mock()
+    monkeypatch.setattr(os, "execve", execute)
+    desktop_launcher.launch(paths, args)
+    start.assert_called_once_with("start", systemd.UNIT)
+    execute.assert_called_once()

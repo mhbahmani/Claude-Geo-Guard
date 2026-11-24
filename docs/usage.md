@@ -188,7 +188,7 @@ journalctl --user -u claude-geo-guard.service -f
 
 Process selection uses exact executable paths, the current UID, `/proc` ancestry and process start times. Signals use pidfds, with identity revalidation, to avoid killing a reused PID. Previously observed children remain tracked after reparenting during the monitor's lifetime. Already detached children that have never been observed, and children surviving a monitor restart without a recognizable executable, may be missed.
 
-Launches through the desktop override require an active monitor. An inactive monitor denies a new guarded launch; an already running app is not automatically isolated if the monitor dies. Service restarts are rate-limited. Restart existing Claude sessions after installation so settings are loaded, and review the journal for running instances.
+Launches through the desktop override require an active monitor. The launcher starts an inactive monitor and denies launch if startup fails; an already running app is not automatically isolated if the monitor dies. Service restarts are rate-limited. Restart existing Claude sessions after installation so settings are loaded, and review the journal for running instances.
 
 For a headless machine or an intentionally CLI-only install:
 

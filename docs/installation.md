@@ -44,7 +44,7 @@ Paths with normal XDG defaults:
 
 The package is copied, not symlinked to the checkout. Wrappers use the installer Python interpreter by absolute path; install with a persistent system Python, not a disposable virtualenv. Python isolated mode ignores `PYTHONPATH`, and bytecode writes are disabled for installed entrypoints. Keep XDG paths consistent across the shell and graphical session. Desktop and hooks use absolute guard paths; they do not depend on the desktop's PATH finding the wrapper.
 
-The monitor unit is enabled on `default.target` of the user manager. No root service or linger setting is installed. Sessions that have no user manager cannot use Desktop monitoring. You can run `claude-geo-guard monitor` for diagnostics, but a foreground monitor does not satisfy the guarded Desktop launcher's service-active requirement.
+While Claude is closed, the Linux monitor sleeps between lightweight executable-path scans and skips network checks. A guarded launch starts the monitor if it is stopped. The monitor unit is enabled on `default.target` of the user manager. No root service or linger setting is installed. Sessions that have no user manager cannot use Desktop monitoring. You can run `claude-geo-guard monitor` for diagnostics, but a foreground monitor does not satisfy the guarded Desktop launcher's service-active requirement.
 
 ## Application timezone
 

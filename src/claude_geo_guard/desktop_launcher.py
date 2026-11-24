@@ -32,7 +32,9 @@ def launch(paths, args):
             "desktop executable changed; rerun install to inspect the package update",
             kind="executable",
         )
-    if not systemd.active():
+    if not systemd.active() and not (
+        systemd.best_effort("start", systemd.UNIT) and systemd.active()
+    ):
         raise LaunchBlocked(
             "runtime monitor inactive; run systemctl --user restart claude-geo-guard",
             kind="monitor",

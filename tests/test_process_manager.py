@@ -83,3 +83,11 @@ def test_real_termination_and_force(ignore):
 def test_gone_before_signal(monkeypatch):
     monkeypatch.setattr(os, "pidfd_open", Mock(side_effect=ProcessLookupError()))
     assert not pm.send(pm.Process(123, 1, 1, "/opt/Claude"), signal.SIGTERM)
+
+
+def test_idle_scan_skips_process_details(tmp_path, monkeypatch):
+    proc_entry(tmp_path, 100, 1, "/other/app")
+    inspect = Mock()
+    monkeypatch.setattr(pm, "inspect", inspect)
+    assert pm.scan({"/opt/Claude"}, proc=tmp_path) == []
+    inspect.assert_not_called()

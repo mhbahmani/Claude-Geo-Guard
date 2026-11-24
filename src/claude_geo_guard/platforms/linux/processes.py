@@ -28,6 +28,18 @@ def inspect(pid, proc=Path("/proc")):
 
 
 def scan(binaries, previous=(), proc=Path("/proc")):
+    if not previous:
+        # While idle, only look for a registered executable. Read ownership,
+        # start times and ancestry in the full scan once a candidate appears.
+        for directory in proc.iterdir():
+            if directory.name.isdigit():
+                try:
+                    if os.readlink(directory / "exe").removesuffix(" (deleted)") in binaries:
+                        break
+                except OSError:
+                    continue
+        else:
+            return []
     all_processes = {
         int(p.name): inspect(int(p.name), proc) for p in proc.iterdir() if p.name.isdigit()
     }
