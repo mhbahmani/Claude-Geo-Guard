@@ -22,6 +22,7 @@ def test_no_flag_install_enter_then_reinstall(environment, monkeypatch):
     assert cli.main(["install"]) == 0
     assert config.load(paths) == config.DEFAULTS
     assert any("Allowed country" in p and "[GB]" in p for p in prompts)
+    assert "Also check your public IP using ifconfig.io? [yes]: " in prompts
     assert prompts[-1] == "Apply these changes? [yes]: "
     saved = dict(
         config.DEFAULTS,
@@ -38,6 +39,7 @@ def test_no_flag_install_enter_then_reinstall(environment, monkeypatch):
     assert cli.main(["install"]) == 0
     assert config.load(paths) == saved
     assert any("Allowed country" in p and "[DE]" in p for p in prompts)
+    assert "Also check your public IP using ifconfig.io? [no]: " in prompts
     paths.guard_config.unlink()
     assert cli.main(["install"]) == 0
     assert config.load(paths) == config.DEFAULTS
@@ -46,9 +48,7 @@ def test_no_flag_install_enter_then_reinstall(environment, monkeypatch):
 def test_explicit_flags_and_cancel(environment, monkeypatch):
     prompts = terminal(monkeypatch, {"Apply these changes?": "no"})
     assert cli.main(["install", "--country", "FR", "--skip-desktop", "--no-split-tunnel"]) == 2
-    assert not any(
-        "Allowed country" in p or "split tunneling" in p or "Desktop" in p for p in prompts
-    )
+    assert not any("Allowed country" in p or "ifconfig.io" in p or "Desktop" in p for p in prompts)
     assert not environment["paths"].manifest.exists()
     prompts.clear()
     assert cli.main(["install", "--dry-run"]) == 0

@@ -122,7 +122,14 @@ def main(argv=None):
                 not sys.stdin.isatty() or not install_prompts.yes_no("Apply these changes?", True)
             ):
                 raise ValueError("installation canceled; use --yes for unattended installation")
+            if interactive:
+                print("\nInstalling Claude Geo Guard…", flush=True)
             installer.install(paths, plan)
+            if interactive:
+                install_prompts.heading("Installation complete")
+                print(f"Backups: {paths.manifest.parent / 'backups'}")
+                print("Open a new terminal and run: claude-geo-guard doctor")
+                return 0
             print("Installed; configuration checked. Real desktop/hook behavior NOT VERIFIED.")
             print(installer.LIMITATION)
             print(
