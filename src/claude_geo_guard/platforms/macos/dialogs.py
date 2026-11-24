@@ -1,5 +1,6 @@
 import subprocess
 
+
 def _egress_lines(verdict):
     families = sorted(verdict.countries.keys() | verdict.ips.keys() | verdict.errors.keys())
     if not families:
@@ -30,15 +31,13 @@ def describe(error, *, runtime=False):
             else "The guard could not verify the connection, so Claude stayed closed."
         )
         if verdict.reason.startswith("egress outside configured country "):
-            explanation = (
-                "The connection does not match the allowed country, so Claude "
-                + ("was closed." if runtime else "stayed closed.")
+            explanation = "The connection does not match the allowed country, so Claude " + (
+                "was closed." if runtime else "stayed closed."
             )
             next_step = "Use a connection in the allowed country, then open Claude again."
         elif "does not match configured allowed_ips" in verdict.reason:
-            explanation = (
-                "The public IP is not allowed, so Claude "
-                + ("was closed." if runtime else "stayed closed.")
+            explanation = "The public IP is not allowed, so Claude " + (
+                "was closed." if runtime else "stayed closed."
             )
             next_step = "Check the connection and allowed_ips setting, then open Claude again."
         if verdict.allowed_country:

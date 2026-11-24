@@ -72,9 +72,7 @@ def test_runtime_dialog_describes_unverified_connection_without_python_dicts():
         "GB",
         allowed_ips=["194.62.249.75"],
     )
-    error = desktop_launcher.LaunchBlocked(
-        verdict.reason, kind="verification", verdict=verdict
-    )
+    error = desktop_launcher.LaunchBlocked(verdict.reason, kind="verification", verdict=verdict)
 
     message = dialogs.describe(error, runtime=True)
 
@@ -94,9 +92,7 @@ def test_runtime_dialog_formats_detected_family():
         "GB",
         {4: "1.2.3.4"},
     )
-    error = desktop_launcher.LaunchBlocked(
-        verdict.reason, kind="verification", verdict=verdict
-    )
+    error = desktop_launcher.LaunchBlocked(verdict.reason, kind="verification", verdict=verdict)
 
     message = dialogs.describe(error, runtime=True)
 
