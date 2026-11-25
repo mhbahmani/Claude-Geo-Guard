@@ -143,9 +143,9 @@ def test_legacy_shared_registration_is_released_and_ignored(
     browser, entry = web_shortcut(environment, tmp_path)
     original = entry.read_text()
     # Reproduce a manifest written by a release without the identity check.
-    monkeypatch.setattr(desktop_entries, "identify", lambda *_: None)
-    installer.install(paths, installer.preflight(paths))
-    monkeypatch.undo()
+    with monkeypatch.context() as patch:
+        patch.setattr(desktop_entries, "identify", lambda *_: None)
+        installer.install(paths, installer.preflight(paths))
     legacy = installer.load_manifest(paths)
     legacy.pop("launchers")
     atomic_write(paths.manifest, json_bytes(legacy))
@@ -387,11 +387,13 @@ def test_confirmed_mismatch_is_not_retried():
 
 
 def test_retry_respects_deadline_and_revalidates_routes(monkeypatch):
-    monkeypatch.setattr(checker, "DEADLINE_SECONDS", checker.RETRY_SECONDS - 1)
-    request, calls = flaky({4: [TimeoutError(), "GB"]})
-    assert not check(routes=lambda: NetworkState((4,), "same"), request=request, environ={}).allowed
-    assert calls == [4]
-    monkeypatch.undo()
+    with monkeypatch.context() as patch:
+        patch.setattr(checker, "DEADLINE_SECONDS", checker.RETRY_SECONDS - 1)
+        request, calls = flaky({4: [TimeoutError(), "GB"]})
+        assert not check(
+            routes=lambda: NetworkState((4,), "same"), request=request, environ={}
+        ).allowed
+        assert calls == [4]
     states = iter([NetworkState((4,), "a"), NetworkState((4,), "b")])
     request, calls = flaky({4: [TimeoutError(), "GB"]})
     verdict = check(routes=lambda: next(states), request=request, environ={})
