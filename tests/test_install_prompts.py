@@ -69,3 +69,10 @@ def test_invalid_answer_retries_one_field(environment, monkeypatch):
     assert cli.main(["install", "--skip-desktop"]) == 0
     assert config.load(environment["paths"])["allowed_country"] == "DE"
     assert not installer.load_manifest(environment["paths"])["desktops"]
+
+
+def test_install_disabled(environment, monkeypatch, capsys):
+    terminal(monkeypatch, {"Enable Claude Geo Guard now?": "no"})
+    assert cli.main(["install"]) == 0
+    assert not config.load(environment["paths"])["enabled"]
+    assert "claude-geo-guard enable" in capsys.readouterr().out

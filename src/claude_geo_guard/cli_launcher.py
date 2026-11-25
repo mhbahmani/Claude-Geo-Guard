@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import config
 from .checker import check
 from .timezone import launch_environment
 
@@ -73,6 +74,9 @@ def version(binary):
 
 def launch(paths, args, explicit=None):
     binary = discover(paths.bin, explicit)
+    if not config.load(paths)["enabled"]:
+        print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
+        return os.execve(str(binary), [str(binary), *args], os.environ)
     verdict = check()
     if not verdict.allowed:
         raise ValueError(verdict.reason)

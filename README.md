@@ -18,6 +18,8 @@ Run without flags for guided setup. Press Enter to accept each value in brackets
 - **Ubuntu or Debian:** Open Claude from its guarded applications-menu entry.
 - **CLI:** Open a new terminal and run `claude-geo-guard check` to verify your connection. Then use `claude` as usual.
 
+Setup asks whether to enable the guard immediately. Press Enter for yes on first install, or choose no to enable it later with `claude-geo-guard enable`. Use `claude-geo-guard disable` to turn protection off again. While disabled, the CLI wrapper and Desktop launcher warn before opening Claude, hooks allow actions, and the runtime monitor stays idle.
+
 To remove the guard, run `claude-geo-guard uninstall`.
 
 ## How the guard works

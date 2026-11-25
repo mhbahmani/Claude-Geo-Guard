@@ -6,6 +6,7 @@ import sys
 from . import (
     __version__,
     cli_launcher,
+    config,
     desktop_launcher,
     installer,
     install_prompts,
@@ -26,7 +27,17 @@ def parser():
     sub.add_parser("hook", help=argparse.SUPPRESS)
     sub.add_parser("status")
     sub.add_parser("doctor")
+    sub.add_parser("enable", help="enable guard protection")
+    sub.add_parser("disable", help="disable guard protection")
     install = sub.add_parser("install")
+    mode = install.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--enabled", dest="enabled", action="store_true", help="enable protection immediately"
+    )
+    mode.add_argument(
+        "--disabled", dest="enabled", action="store_false", help="install with protection disabled"
+    )
+    install.set_defaults(enabled=None)
     install.add_argument(
         "--split-tunnel",
         action=argparse.BooleanOptionalAction,
@@ -80,6 +91,8 @@ def main(argv=None):
     try:
         backend("environment")
         if args.command in {"check", "hook"}:
+            if args.command == "hook" and not config.load(paths)["enabled"]:
+                return 0
             verdict = check()
             if args.command == "check":
                 print(json.dumps(verdict.as_dict()))
@@ -109,6 +122,7 @@ def main(argv=None):
                 split_tunnel=args.split_tunnel,
                 timezone=args.timezone,
                 desktop_app=args.desktop_app,
+                enabled=args.enabled,
                 **extra,
             )
             if interactive:
@@ -126,6 +140,8 @@ def main(argv=None):
             if interactive:
                 print("\nInstalling Claude Geo Guard…", flush=True)
             installer.install(paths, plan)
+            if not plan["enabled"]:
+                print(config.DISABLED_MESSAGE)
             print(shell.routing_message(paths.bin / "claude"), file=sys.stderr)
             if interactive:
                 install_prompts.heading("Installation complete")
@@ -137,6 +153,10 @@ def main(argv=None):
             print(
                 f"Backups: {paths.manifest.parent / 'backups'}; open a new shell; run claude-geo-guard doctor"
             )
+        elif args.command in {"enable", "disable"}:
+            enabled = args.command == "enable"
+            installer.set_enabled(paths, enabled)
+            print("Claude Geo Guard is enabled." if enabled else config.DISABLED_MESSAGE)
         elif args.command == "set-country":
             print(json.dumps(installer.set_country(paths, args.country), indent=2))
         elif args.command == "set-timezone":

@@ -67,6 +67,7 @@ def preflight(
     success_notifications=None,
     timezone=None,
     desktop_app=None,
+    enabled=None,
 ):
     backend("environment").preflight(skip_desktop=skip_desktop, desktop_app=desktop_app)
     linux_desktop = sys.platform == "linux" and not skip_desktop
@@ -87,6 +88,7 @@ def preflight(
     current_config = config.parse(config_raw) if config_raw is not None else dict(config.DEFAULTS)
     chosen = dict(current_config)
     for key, value in (
+        ("enabled", enabled),
         ("allowed_country", country),
         ("split_tunnel", split_tunnel),
         ("allowed_ips", allowed_ips),
@@ -199,6 +201,7 @@ def preflight(
     return {
         "allowed_country": country,
         "timezone": timezone,
+        "enabled": chosen["enabled"],
         "config_raw": config_raw,
         "config_data": config_data,
         "config_path": str(paths.guard_config),
@@ -226,6 +229,7 @@ def summary(plan):
     return {
         "allowed_country": plan["allowed_country"],
         "timezone": plan["timezone"],
+        "enabled": plan["enabled"],
         "config_file": plan["config_path"],
         "split_tunnel": plan["split_tunnel"],
         "allowed_ips": plan["allowed_ips"],
@@ -567,6 +571,10 @@ def _update_setting(paths, key, value):
             except BaseException:
                 tx.rollback()
                 raise
+
+
+def set_enabled(paths, enabled):
+    _update_setting(paths, "enabled", enabled)
 
 
 def set_country(paths, country):

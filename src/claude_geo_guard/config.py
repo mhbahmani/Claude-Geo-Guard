@@ -9,7 +9,10 @@ from .policy import DEFAULT_COUNTRY, normalize_country
 from .storage import read
 from .timezone import normalize_timezone
 
+DISABLED_MESSAGE = "Claude Geo Guard is disabled. To enable it, run claude-geo-guard enable."
+
 DEFAULTS = {
+    "enabled": True,
     "allowed_country": DEFAULT_COUNTRY,
     "timezone": None,
     "interval": 15,
@@ -49,13 +52,16 @@ def validate(data):
         raise ValueError("config.json is missing: " + ", ".join(sorted(missing)))
     if unknown:
         raise ValueError(
-            "config.json has unknown keys; use allowed_country, timezone, interval, grace, allowed_ips, success_notifications, split_tunnel"
+            "config.json has unknown keys; use enabled, allowed_country, timezone, interval, grace, allowed_ips, success_notifications, split_tunnel"
         )
     allowed_ips = data.get("allowed_ips", [])
     if not isinstance(allowed_ips, list):
         raise ValueError(
             "allowed_ips must be an array of exact addresses, or [] to disable IP matching"
         )
+    enabled = data.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be true or false")
     split_tunnel = data.get("split_tunnel", False)
     if not isinstance(split_tunnel, bool):
         raise ValueError("split_tunnel must be true or false")
@@ -63,6 +69,7 @@ def validate(data):
     if not isinstance(notifications, bool):
         raise ValueError("success_notifications must be true or false (Desktop launches only)")
     return {
+        "enabled": enabled,
         "allowed_country": normalize_country(data["allowed_country"]),
         "timezone": normalize_timezone(data["timezone"]),
         "interval": validate_timing("interval", data["interval"]),

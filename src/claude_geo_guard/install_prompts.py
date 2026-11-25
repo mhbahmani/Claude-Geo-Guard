@@ -49,6 +49,8 @@ def preferences(paths, args):
     print("Press Enter for the value in brackets. Ctrl+C cancels setup.")
     if old and raw is None:
         print("The saved configuration is missing. The brackets show first-install defaults.")
+    if args.enabled is None:
+        args.enabled = yes_no("Enable Claude Geo Guard now?", saved["enabled"])
     heading("Location and IP checks")
     if args.country is None:
         args.country = ask(
@@ -131,6 +133,7 @@ def preview(plan):
     if not plan["split_tunnel"]:
         destinations.append("ifconfig.io")
     rows = [
+        ("Guard", "Enabled" if plan["enabled"] else "Disabled"),
         ("Country", plan["allowed_country"]),
         ("Check IP at", ", ".join(destinations)),
         ("Allowed IPs", ", ".join(plan["allowed_ips"]) or "Any in the allowed country"),

@@ -104,6 +104,7 @@ Your editable settings live in **`~/.config/claude-geo-guard/config.json`**, or 
   "timezone": "Europe/London",
   "interval": 15,
   "grace": 5,
+  "enabled": true,
   "allowed_ips": [],
   "success_notifications": true
 }
@@ -115,10 +116,13 @@ Your editable settings live in **`~/.config/claude-geo-guard/config.json`**, or 
 | `timezone` | IANA timezone for new Claude processes; `null` or `"inherit"` uses the normal environment (the default). |
 | `interval` | Seconds between completed monitor cycles; 5–300, default 15. |
 | `grace` | Seconds between graceful and forced termination; 0–30, default 5. This is not a retry window for network failures. |
+| `enabled` | Defaults to `true`. Set to `false` to skip automatic launch checks, timezone overrides, hook checks and runtime monitoring. |
 | `allowed_ips` | Optional array of exact IPv4/IPv6 addresses. Omitted or `[]` disables IP matching; country checking remains required. |
 | `success_notifications` | Optional boolean; `true` (default) confirms guarded Desktop launches, `false` disables success confirmations. |
 
-The first four keys are required; the last two are optional. Use valid JSON with no comments or trailing commas; duplicate/unknown keys, wrong types and out-of-range values are rejected. Save the complete file atomically where your editor supports it: incomplete or invalid saves deny new checks and cause the running monitor to stop protected apps at its next cycle. It logs the configuration error and keeps running so it can recover after you fix the file. `claude-geo-guard doctor` reports validation errors, the config path and current settings, and also performs a live country check.
+Use `claude-geo-guard disable` and `claude-geo-guard enable` to change protection after installation. For an unattended install with protection off, use `./install.sh --yes --disabled`. The CLI wrapper and Desktop launcher show the enable command whenever they open Claude with protection disabled. Manual diagnostics still perform a live check.
+
+The required keys are `allowed_country`, `timezone`, `interval` and `grace`. Use valid JSON with no comments or trailing commas; duplicate/unknown keys, wrong types and out-of-range values are rejected. Save the complete file atomically where your editor supports it: incomplete or invalid saves deny new checks and cause the running monitor to stop protected apps at its next cycle. It logs the configuration error and keeps running so it can recover after you fix the file. `claude-geo-guard doctor` reports validation errors, the config path and current settings, and also performs a live country check.
 
 Country edits apply to subsequent checks. The service reloads interval/grace at each cycle, after any current wait; no restart is needed. Timezone edits apply only to newly launched processes—fully quit and reopen Desktop. Reinstallation retains saved values unless you supply explicit installer flags. The `set-country` and `set-timezone` commands edit this same file atomically.
 

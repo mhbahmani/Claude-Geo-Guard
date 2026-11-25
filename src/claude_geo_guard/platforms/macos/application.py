@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import plistlib
 import subprocess
+import sys
 import tempfile
 
 from ... import config
@@ -132,6 +133,14 @@ def launch(paths, args):
     record = json.loads(paths.manifest.read_text()).get("mac_app")
     if not record:
         raise ValueError("install macOS Desktop protection first")
+    if not config.load(paths)["enabled"]:
+        print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
+        dialogs.present(
+            'display alert "Claude Guard" message (item 1 of argv) as warning',
+            config.DISABLED_MESSAGE,
+        )
+        subprocess.run(["/usr/bin/open", "-a", record["path"]], check=True, timeout=15)
+        return
     if not service.healthy(paths):
         raise ValueError("runtime monitor is inactive")
     verdict = check()

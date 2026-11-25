@@ -36,6 +36,8 @@ def test_user_config_is_separate_from_installer_state(environment):
 @pytest.mark.parametrize(
     "key,value",
     [
+        ("enabled", "false"),
+        ("enabled", 0),
         ("interval", 0),
         ("interval", 301),
         ("interval", 10**400),
@@ -154,12 +156,15 @@ def test_direct_edit_changes_installed_check_and_hook(environment, monkeypatch):
     assert paths.guard_config.read_bytes() == b"{"  # Even malformed user edits are retained.
 
 
-@pytest.mark.parametrize("invalid_second", [False, True])
+@pytest.mark.parametrize(
+    "initially_enabled, invalid_second", [(True, False), (True, True), (False, False)]
+)
 def test_monitor_reloads_manual_edits_and_fails_closed(
-    environment, monkeypatch, caplog, invalid_second
+    environment, monkeypatch, caplog, initially_enabled, invalid_second
 ):
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))
+    save(paths, enabled=initially_enabled)
     waits, ticks = [], []
 
     class Stop:
@@ -194,7 +199,7 @@ def test_monitor_reloads_manual_edits_and_fails_closed(
     monkeypatch.setattr(monitor, "tick", tick)
     caplog.set_level(logging.ERROR)
     monitor.run(paths)
-    assert ticks == ([5, 0] if invalid_second else [5, 1])
+    assert ticks == ([5] if initially_enabled else []) + [0 if invalid_second else 1]
     assert waits == ([15, 5] if invalid_second else [15, 8])
     if invalid_second:
         assert "configuration_invalid" in caplog.text

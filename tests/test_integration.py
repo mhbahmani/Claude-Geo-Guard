@@ -64,6 +64,17 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     assert "--ok-label=Close" in dialog_args
     assert "Allowed country: <b>GB</b>" in dialog_args[-1]
     assert "Detected IPv4: <b>US · 1.1.1.1</b>" in dialog_args[-1]
+    subprocess.run([str(guard), "disable"], check=True)
+    unguarded = subprocess.run([str(cli), "hello"], capture_output=True, text=True)
+    assert unguarded.returncode == 17
+    assert "claude-geo-guard enable" in unguarded.stderr
+    assert json.loads(unguarded.stdout) == ["hello"]
+    subprocess.run([str(guard), "hook"], check=True)
+    subprocess.run([str(guard), "desktop", "--", str(environment["desktop"]), "0"], check=True)
+    warning = json.loads((paths.home / "dialog.json").read_text())
+    assert "--warning" in warning and "claude-geo-guard enable" in warning[-1]
+    subprocess.run([str(guard), "enable"], check=True)
+    assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 2
     (environment["bins"] / "FAKE_COUNTRY").write_text("GB")
     assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 0
     report = subprocess.run([str(guard), "doctor"], capture_output=True, text=True)

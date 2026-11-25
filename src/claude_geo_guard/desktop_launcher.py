@@ -32,6 +32,11 @@ def launch(paths, args):
             "desktop executable changed; rerun install to inspect the package update",
             kind="executable",
         )
+    preferences = config.load(paths)
+    if not preferences["enabled"]:
+        print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
+        backend("dialogs").show_warning(config.DISABLED_MESSAGE)
+        return os.execve(executable, [executable, *args[1:]], os.environ)
     if not systemd.active() and not (
         systemd.best_effort("start", systemd.UNIT) and systemd.active()
     ):
@@ -51,7 +56,7 @@ def launch(paths, args):
         details.append("Country provider: Claude edge traces (plus ifconfig.io in full mode)")
         raise LaunchBlocked("\n".join(details), kind="verification", verdict=verdict)
     environment = launch_environment(paths)
-    if config.load(paths)["success_notifications"]:
+    if preferences["success_notifications"]:
         from .platforms.linux.dialogs import show_success
 
         show_success(verdict)

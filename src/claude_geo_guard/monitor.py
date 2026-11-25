@@ -76,6 +76,7 @@ def tick(
     scanner=scan,
     killer=terminate,
     notifier=notify,
+    paths=None,
 ):
     processes = scanner(binaries, previous)
     if not processes:
@@ -99,6 +100,13 @@ def tick(
         processes = scanner(binaries, processes)
         if not processes:
             return []
+        # A disable during a slow network probe takes effect before termination.
+        if paths is not None:
+            try:
+                if not config.load(paths)["enabled"]:
+                    return []
+            except (OSError, ValueError):
+                pass  # An unreadable configuration still fails closed.
         LOG.warning(
             json.dumps(
                 {
@@ -138,6 +146,10 @@ def run(paths, interval=None, grace=None):
                 try:
                     preferences = config.load(paths)
                     cycle_interval = preferences["interval"] if interval is None else interval
+                    if not preferences["enabled"]:
+                        previous = []
+                        stop.wait(cycle_interval)
+                        continue
                     cycle_grace = preferences["grace"] if grace is None else grace
                 except (ValueError, OSError):
                     # A malformed edit must not stop the monitor and leave apps running.
@@ -153,6 +165,7 @@ def run(paths, interval=None, grace=None):
                     previous,
                     cycle_grace,
                     stop,
+                    paths=paths,
                     notifier=alerts,
                     checker=checker,
                 )

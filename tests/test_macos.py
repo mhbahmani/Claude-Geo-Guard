@@ -105,7 +105,9 @@ def test_native_cli_only_prerequisites():
     environment.preflight(skip_desktop=True, desktop_app=None)
 
 
-@pytest.mark.parametrize("case", ["allowed", "denied", "inactive", "changed", "stopped"])
+@pytest.mark.parametrize(
+    "case", ["allowed", "denied", "inactive", "changed", "stopped", "disabled"]
+)
 def test_guarded_launch(isolated, monkeypatch, case):
     from claude_geo_guard.platforms.macos import application
     from claude_geo_guard.checker import Verdict
@@ -113,7 +115,7 @@ def test_guarded_launch(isolated, monkeypatch, case):
 
     from claude_geo_guard.config import DEFAULTS
 
-    atomic_write(isolated.guard_config, json_bytes(DEFAULTS))
+    atomic_write(isolated.guard_config, json_bytes(dict(DEFAULTS, enabled=case != "disabled")))
     record = {"path": str(isolated.home / "Claude Test.app")}
     atomic_write(isolated.manifest, json_bytes({"mac_app": record}))
     monkeypatch.setattr(
@@ -129,7 +131,16 @@ def test_guarded_launch(isolated, monkeypatch, case):
     launch = Mock()
     monkeypatch.setattr(application.subprocess, "run", launch)
     monkeypatch.setattr(application.dialogs, "notify", Mock())
-    if case == "allowed":
+    if case == "disabled":
+        warning = Mock()
+        monkeypatch.setattr(application.dialogs, "present", warning)
+        application.launch(isolated, [])
+        assert "claude-geo-guard enable" in warning.call_args.args[1]
+        application.service.healthy.assert_not_called()
+        launch.assert_called_once_with(
+            ["/usr/bin/open", "-a", record["path"]], check=True, timeout=15
+        )
+    elif case == "allowed":
         application.launch(isolated, [])
         assert launch.call_args.args[0] == [
             "/usr/bin/open",

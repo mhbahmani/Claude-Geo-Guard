@@ -58,6 +58,25 @@ def egress_facts(verdict):
     ] or [("Detected country / IP", "Not verified · IP not returned")]
 
 
+def show_warning(message):
+    helper = available()
+    if helper == "zenity":
+        command = [helper, "--warning", "--no-markup", f"--title={TITLE}", f"--text={message}"]
+    elif helper:
+        command = [helper, "--title", TITLE, "--sorry", message]
+    else:
+        command = []
+    try:
+        if command and _dismissed(_run_dialog(command), helper):
+            return
+    except OSError:
+        pass
+    try:
+        subprocess.run(["notify-send", TITLE, message], capture_output=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def show_success(verdict):
     """Open a timed confirmation alongside Claude in the graphical session."""
     helper = available()

@@ -117,6 +117,7 @@ def test_denial_explains_allowed_and_observed_countries(environment, monkeypatch
     paths = environment["paths"]
     atomic_write(paths.manifest, json_bytes({"binaries": [str(environment["desktop"])]}))
     monkeypatch.setattr(systemd, "active", lambda: True)
+    atomic_write(paths.guard_config, json_bytes(config.DEFAULTS))
     monkeypatch.setattr(
         desktop_launcher,
         "check",

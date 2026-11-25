@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "allowed_country": "GB",
   "timezone": null,
   "interval": 15,
