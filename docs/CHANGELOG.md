@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3
+
+- Cursor Agent can import the guard hook and submit prompts or use tools without a geo-check. Claude Code still checks its own hooks when launched from Cursor’s terminal, and Claude Desktop retains its launch and runtime checks.
+
 ## 0.7.2
 
 - When a runtime check fails, the monitor requests the error window as it starts closing Claude Desktop. The window explains the failure while shutdown proceeds.
