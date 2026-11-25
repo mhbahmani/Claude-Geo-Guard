@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0
+
+- Failed provider requests log numeric DNS, connection and TLS timings, and failure messages retain errors from both endpoints.
+- Running Claude now stays open while the connection is offline or too slow to check. After a timeout the monitor checks again after 1 and then 3 seconds. After three failed checks in a row, or straight away when no network route exists, it enters offline mode and shows a notification. A country or IP mismatch still closes Claude immediately, including in offline mode. New launches and Claude Code prompts and tools stay blocked until the connection is verified.
+- When the network changes, for example when a VPN or proxy connects or drops, the monitor pauses Claude Desktop until the new network is verified. Claude resumes if the network passes or cannot be reached, and is closed on a mismatch. Terminal Claude Code sessions are not paused; their hooks block prompts and tools instead. On Linux, routing changes wake the monitor immediately instead of waiting for the next periodic check.
+- A VPN kill switch that blocks every route counts as offline. A switch that blocks only one IP family still blocks access, because the other family cannot be confirmed.
+- Desktop launch messages and hook denials say when the connection could not be checked, rather than reporting a policy failure.
+- `./install.sh` in a checkout now installs that checkout. It used to download the latest release, so local changes were never installed. Use `--release` to download the release instead.
+- Reinstalling replaces guard package files that were edited or copied into the installation by hand, instead of failing. It lists them and keeps their previous contents in the backup journal. A failed installation now says that nothing was changed.
+
 ## 0.10.1
 
 - Fix flaky installer animation tests on macOS by waiting for an observed animation cycle instead of a fixed sleep. Runtime behavior is unchanged.
