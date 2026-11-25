@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from claude_geo_guard import checker, config, desktop_launcher, monitor
+from claude_geo_guard import checker, config, desktop_launcher, health, monitor
 from claude_geo_guard.platforms.linux import dialogs
 from claude_geo_guard.platforms.linux.networking import NetworkState
 from claude_geo_guard.storage import atomic_write, json_bytes
@@ -181,6 +181,7 @@ def test_only_enabled_guarded_launch_shows_success(environment, monkeypatch, ena
     save(paths, success_notifications=enabled)
     atomic_write(paths.manifest, json_bytes({"binaries": [str(environment["desktop"])]}))
     monkeypatch.setattr(systemd, "active", lambda: True)
+    health.publish(paths, "ready")
     monkeypatch.setattr(
         desktop_launcher, "check", lambda: checker.Verdict(True, "test", {4: "GB"}, "GB", {4: IP4})
     )

@@ -32,6 +32,8 @@ def doctor(report):
     lines = ["Claude Geo Guard doctor — " + ("healthy" if healthy else "needs attention")]
     if report["issues"]:
         lines.extend(["", "Issues", *("  - " + issue for issue in report["issues"])])
+    if report.get("notes"):
+        lines.extend(["", "Notes", *("  - " + note for note in report["notes"])])
     settings = report.get("configuration", {})
     protection = "Unknown"
     if "enabled" in settings:
@@ -56,4 +58,6 @@ def doctor(report):
         lines.append(f"  Desktop launcher: {report['guarded_application']}")
     for launcher in report["desktop_launcher_guards"]:
         lines.append(f"  Desktop launcher: {launcher['id']} ({launcher['configuration']})")
+    for update in report.get("accepted_updates", []):
+        lines.append(f"  Accepted Claude update: {update}")
     return "\n".join(lines)

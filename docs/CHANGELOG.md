@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+- Installed hooks, launchers and the monitor always use the configuration and state chosen at installation, even when Claude runs them with different XDG directories. A missing installed `config.json` denies access and names the expected path. Rerun the installer to update existing launchers.
+- Shortcuts that open claude.ai in a browser, and launchers whose executable is not a dedicated Claude installation, are reported as unprotected instead of being registered for termination. Reinstalling removes such a registration left by an earlier release, and until then the monitor ignores it.
+- When the native Claude Code updater switches `~/.local/bin/claude` to a new version, the URL handler and the monitor accept the new version from the same installation directory. Processes from the old version stay monitored. Doctor reports a launcher that points anywhere else.
+- The CLI wrapper refuses to start a session that would skip the guard's hooks: `--bare`, `--safe-mode`, `--restricted`, `CLAUDE_CODE_SIMPLE`, `CLAUDE_CODE_SAFE_MODE`, `--setting-sources` without `user`, `disableAllHooks` in project, local, managed or `--settings` files, or missing hooks. The Claude Code version check now runs before the network check.
+- The monitor keeps protecting running apps with its last valid manifest when the manifest becomes unreadable, and recovers on its own once it is repaired. Desktop launches wait for the monitor to report readiness and stay blocked while it is degraded. A monitor that hit systemd's restart limit is restarted on the next Desktop launch.
+- Doctor reports Claude menu entries, actions and autostart entries added after installation that launch Claude without the guard.
+- A single provider timeout or dropped connection is retried once within a 20-second deadline. A confirmed country or IP mismatch is never retried.
+
 ## 0.7.4
 
 - Run `claude-geo-guard version` to print the installed version.

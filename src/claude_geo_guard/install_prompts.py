@@ -151,6 +151,7 @@ def preview(plan):
     rows.append(("Monitor", monitor))
     if targets:
         rows.append(("Launch notices", "On" if plan["success_notifications"] else "Off"))
+    rows.extend(("Not protected", reason) for reason in plan.get("skipped_desktops", []))
     for label, value in rows:
         print(f"  {label:<14}  {value}")
     print("\nSetup installs the CLI wrapper, registers hooks and updates your shell PATH.")

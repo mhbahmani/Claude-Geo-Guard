@@ -3,7 +3,7 @@ import logging
 import signal
 import threading
 
-from . import config
+from . import config, executables, health
 from .checker import Verdict, check
 from .desktop_launcher import LaunchBlocked
 from .platforms import backend
@@ -127,6 +127,53 @@ def tick(
     return processes
 
 
+class Coverage:
+    """Executables to protect. A failed reload keeps the last validated manifest."""
+
+    def __init__(self, paths):
+        self.paths = paths
+        self.signature = ()
+        self.manifest = None
+        self.error = None
+        self.binaries = set()
+        self.reported = set()
+
+    def _report(self, event, **details):
+        key = (event, *details.values())
+        if key not in self.reported:
+            self.reported.add(key)
+            LOG.warning(json.dumps({"event": event, **details}))
+
+    def refresh(self):
+        try:
+            info = self.paths.manifest.stat()
+            signature = (info.st_ino, info.st_mtime_ns, info.st_size)
+        except OSError:
+            signature = None
+        if signature != self.signature:
+            self.signature = signature
+            try:
+                self.manifest = executables.load_manifest(self.paths)
+                self.error = None
+                self.binaries = set()
+            except (OSError, ValueError) as error:
+                self.error = f"installation manifest unreadable: {error}"
+        if self.manifest is not None:
+            known = executables.validated(self.manifest)
+            for binary in set(self.manifest["binaries"]) - known:
+                self._report("registration_ignored", executable=binary)
+            accepted, unrecognized = executables.resolve_launchers(
+                executables.manifest_launchers(self.manifest), known
+            )
+            for target in accepted - known - self.binaries:
+                self._report("executable_update_accepted", executable=target)
+            for launcher, target in unrecognized.items():
+                self._report("executable_unrecognized", launcher=launcher, target=target)
+            # Previous update targets stay registered for processes that are still running.
+            self.binaries |= known | accepted
+        return self.error
+
+
 def run(paths, interval=None, grace=None):
     backend("processes")  # Reject unavailable runtime protection before acquiring a lock.
     for key, value in (("interval", interval), ("grace", grace)):
@@ -140,29 +187,34 @@ def run(paths, interval=None, grace=None):
 
     try:
         with lock(paths.manifest.parent / "monitor.lock"):
-            previous = []
+            coverage = Coverage(paths)
+            previous, state = [], ()
             while not stop.is_set():
-                manifest = json.loads(paths.manifest.read_text())
-                checker = check
+                manifest_error = coverage.refresh()
+                checker, config_error, enabled = check, None, True
                 try:
                     preferences = config.load(paths)
                     cycle_interval = preferences["interval"] if interval is None else interval
-                    if not preferences["enabled"]:
-                        previous = []
-                        stop.wait(cycle_interval)
-                        continue
                     cycle_grace = preferences["grace"] if grace is None else grace
-                except (ValueError, OSError):
+                    enabled = preferences["enabled"]
+                except (ValueError, OSError) as error:
                     # A malformed edit must not stop the monitor and leave apps running.
                     cycle_interval, cycle_grace = 5, 0
-                    reason = "guard configuration is invalid or unreadable; repair config.json"
-                    LOG.error(json.dumps({"event": "configuration_invalid", "reason": reason}))
+                    config_error = f"guard configuration is invalid or unreadable: {error}"
 
-                    def checker():
+                    def checker(reason=config_error):
                         return Verdict(False, reason, {})
 
+                problem = config_error or manifest_error
+                if problem != state:
+                    _transition(paths, problem, config_error is not None)
+                    state = problem
+                if not enabled:
+                    previous = []
+                    stop.wait(cycle_interval)
+                    continue
                 previous = tick(
-                    set(manifest["binaries"]),
+                    set(coverage.binaries),
                     previous,
                     cycle_grace,
                     stop,
@@ -172,4 +224,17 @@ def run(paths, interval=None, grace=None):
                 )
                 stop.wait(cycle_interval)
     finally:
+        health.withdraw(paths)
         alerts.close()
+
+
+def _transition(paths, problem, configuration):
+    if problem is None:
+        LOG.info(json.dumps({"event": "monitor_ready"}))
+    else:
+        event = "configuration_invalid" if configuration else "monitor_degraded"
+        LOG.error(json.dumps({"event": event, "reason": problem}))
+    try:
+        health.publish(paths, "ready" if problem is None else "degraded", problem)
+    except OSError as error:
+        LOG.error(json.dumps({"event": "health_unwritable", "error_type": type(error).__name__}))

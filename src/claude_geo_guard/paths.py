@@ -3,6 +3,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+_installed = None
+
 
 @dataclass(frozen=True)
 class Paths:
@@ -10,9 +12,13 @@ class Paths:
     data: Path
     config: Path
     state: Path
+    # Set by the installed bootstrap: the caller's environment no longer selects files.
+    installed: bool = False
 
     @classmethod
     def current(cls):
+        if _installed is not None:
+            return _installed
         home = Path.home()
         if sys.platform == "darwin":
             support = home / "Library/Application Support"
@@ -28,6 +34,12 @@ class Paths:
             xdg("XDG_CONFIG_HOME", home / ".config"),
             xdg("XDG_STATE_HOME", home / ".local/state"),
         )
+
+    @classmethod
+    def pin(cls, home, data, config, state):
+        global _installed
+        _installed = cls(Path(home), Path(data), Path(config), Path(state), installed=True)
+        return _installed
 
     @property
     def root(self):
@@ -53,3 +65,7 @@ class Paths:
     @property
     def settings(self):
         return self.home / ".claude/settings.json"
+
+    @property
+    def monitor_health(self):
+        return self.manifest.parent / "monitor-health.json"

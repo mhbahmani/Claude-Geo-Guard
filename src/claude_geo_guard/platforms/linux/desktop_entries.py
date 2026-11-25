@@ -7,6 +7,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...executables import Ambiguous, dedicated, web_shortcut
+
 
 def values(text):
     if "\r" in text:
@@ -31,16 +33,25 @@ def values(text):
     return result
 
 
-def executable(command):
+def arguments(command):
     # General string escaping precedes Exec quoting. Reject unknown escapes rather than guess.
-    command = command.replace("\\\\", "\\")
-    args = shlex.split(command, posix=True)
+    args = shlex.split(command.replace("\\\\", "\\"), posix=True)
     if not args or "%" in args[0] or any(c in args[0] for c in "\n\r"):
         raise ValueError("unsupported desktop executable")
+    return args
+
+
+def launcher(command):
+    """The stable, unresolved program path that the desktop environment runs."""
+    args = arguments(command)
     found = args[0] if os.path.isabs(args[0]) else shutil.which(args[0])
     if not found or not Path(found).is_file() or not os.access(found, os.X_OK):
         raise ValueError(f"missing desktop executable: {args[0]}")
-    path = Path(found).resolve()
+    return Path(found).absolute()
+
+
+def executable(command):
+    path = launcher(command).resolve()
     if path.name in {
         "env",
         "sh",
@@ -136,6 +147,27 @@ def discover(paths):
     return entries
 
 
+def identify(ident, parsed, exec_sections):
+    """Name and URL matches are hints; termination needs a dedicated Claude executable."""
+    commands = [arguments(parsed[section]["Exec"]) for section in sorted(exec_sections)]
+    if any(web_shortcut(args) for args in commands):
+        raise Ambiguous(f"{ident}: web shortcut runs a shared browser; not protected")
+    program = launcher(parsed["Desktop Entry"]["Exec"])
+    if not (dedicated(program) or dedicated(program.resolve())):
+        raise Ambiguous(f"{ident}: {program} is not a dedicated Claude executable; not protected")
+
+
+def classify(entry):
+    """None for a supported Claude launcher, or the reason it is left unprotected."""
+    parsed = values(entry.text)
+    sections = {n for n in parsed if n == "Desktop Entry" or n.startswith("Desktop Action ")}
+    try:
+        identify(entry.id, parsed, {s for s in sections if "Exec" in parsed[s]})
+    except Ambiguous as error:
+        return str(error)
+    return None
+
+
 def intercept(entry, guard):
     parsed = values(entry.text)
     binaries = set()
@@ -144,10 +176,12 @@ def intercept(entry, guard):
     }
     if "Exec" not in parsed["Desktop Entry"]:
         raise ValueError(f"{entry.id}: Desktop Entry has no interceptable Exec")
-    main_executable = executable(parsed["Desktop Entry"]["Exec"])
     for section in exec_sections:
         if "Exec" not in parsed[section]:
             raise ValueError(f"{entry.id}: {section} has no interceptable Exec")
+    identify(entry.id, parsed, exec_sections)
+    main_executable = executable(parsed["Desktop Entry"]["Exec"])
+    for section in exec_sections:
         candidate = executable(parsed[section]["Exec"])
         if candidate != main_executable:
             raise ValueError(

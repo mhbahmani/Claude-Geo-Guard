@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from claude_geo_guard import config, desktop_launcher
+from claude_geo_guard import config, desktop_launcher, health
 from claude_geo_guard.checker import Verdict
 from claude_geo_guard.platforms.linux.desktop_entries import (
     discover,
@@ -93,6 +93,8 @@ def test_desktop_launch_gate(environment, monkeypatch, allowed, active):
     atomic_write(paths.manifest, json_bytes({"binaries": [str(environment["desktop"])]}))
     atomic_write(paths.guard_config, json_bytes(config.DEFAULTS))
     monkeypatch.setattr(systemd, "active", lambda: active)
+    monkeypatch.setattr(systemd, "best_effort", lambda *_: False)
+    health.publish(paths, "ready")
     monkeypatch.setattr(desktop_launcher, "check", lambda: Verdict(allowed, "test", {}))
     execute = Mock()
     monkeypatch.setattr(os, "execve", execute)
@@ -117,6 +119,7 @@ def test_denial_explains_allowed_and_observed_countries(environment, monkeypatch
     paths = environment["paths"]
     atomic_write(paths.manifest, json_bytes({"binaries": [str(environment["desktop"])]}))
     monkeypatch.setattr(systemd, "active", lambda: True)
+    health.publish(paths, "ready")
     atomic_write(paths.guard_config, json_bytes(config.DEFAULTS))
     monkeypatch.setattr(
         desktop_launcher,
@@ -191,11 +194,15 @@ def test_launch_starts_stopped_monitor(environment, monkeypatch):
     start = Mock(return_value=True)
     monkeypatch.setattr(systemd, "best_effort", start)
     monkeypatch.setattr(systemd, "active", Mock(side_effect=[False, True]))
+    health.publish(paths, "ready")
     monkeypatch.setattr(desktop_launcher, "check", lambda: Verdict(True, "verified", {}))
     execute = Mock()
     monkeypatch.setattr(os, "execve", execute)
     desktop_launcher.launch(paths, args)
-    start.assert_called_once_with("start", systemd.UNIT)
+    assert start.call_args_list == [
+        (("reset-failed", systemd.UNIT),),
+        (("start", systemd.UNIT),),
+    ]
     execute.assert_called_once()
 
 

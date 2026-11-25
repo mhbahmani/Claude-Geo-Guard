@@ -107,7 +107,7 @@ def load(paths=None):
     raw = read(paths.guard_config)
     if raw is not None:
         return parse(raw)
-    if paths.manifest.exists() or (paths.bin / "claude-geo-guard").exists():
+    if paths.installed or paths.manifest.exists() or (paths.bin / "claude-geo-guard").exists():
         raise ValueError(
             f"configuration is missing: {paths.guard_config}; restore it before using Claude"
         )

@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 
@@ -13,6 +14,11 @@ from .policy import COUNTRIES, normalize_country
 
 TRACE_HOSTS = ("claude.ai", "api.anthropic.com")
 ENDPOINT = "https://ifconfig.io/all.json"
+# curl exits for a dropped connection or timeout, which say nothing about the egress country.
+TRANSIENT_EXITS = {7, 28, 35, 52, 55, 56}
+# Hooks time out after 30 seconds; a retry must fit inside this overall budget.
+DEADLINE_SECONDS = 20
+RETRY_SECONDS = 9
 
 
 @dataclass
@@ -41,9 +47,9 @@ class Egress:
 class ProviderFailure(ValueError):
     """Safe diagnostic and validated partial results; never raw body/stderr."""
 
-    def __init__(self, message, *, country=None, ip=None):
+    def __init__(self, message, *, country=None, ip=None, transient=False):
         super().__init__(message)
-        self.country, self.ip = country, ip
+        self.country, self.ip, self.transient = country, ip, transient
 
 
 def _http_status(output):
@@ -111,10 +117,12 @@ def query(family: int, host=None) -> Egress:
         reason = reasons.get(error.returncode, "provider request failed")
         status = _http_status(error.stdout)
         context = f"curl exit {error.returncode}" + (f", HTTP {status}" if status else "")
-        raise ProviderFailure(f"IPv{family}: {reason} ({context})") from None
+        raise ProviderFailure(
+            f"IPv{family}: {reason} ({context})", transient=error.returncode in TRANSIENT_EXITS
+        ) from None
     except subprocess.TimeoutExpired:
         raise ProviderFailure(
-            f"IPv{family}: verification command exceeded 8-second deadline"
+            f"IPv{family}: verification command exceeded 8-second deadline", transient=True
         ) from None
     except OSError as error:
         raise ProviderFailure(
@@ -181,6 +189,7 @@ def _unique_response(pairs):
 
 
 def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) -> Verdict:
+    started = time.monotonic()
     try:
         preferences = config.load()
         target = (
@@ -189,10 +198,8 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
             else normalize_country(allowed_country)
         )
         allowed_ips = preferences["allowed_ips"]
-    except (OSError, ValueError):
-        return Verdict(
-            False, "guard configuration is invalid or unreadable; repair config.json", {}
-        )
+    except (OSError, ValueError) as error:
+        return Verdict(False, f"guard configuration is invalid or unreadable: {error}", {})
     countries, ips, errors = {}, {}, {}
 
     observations = {}
@@ -222,17 +229,15 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
         if not before.families:
             return verdict(False, "no usable public routes")
         hosts = [*TRACE_HOSTS] if preferences["split_tunnel"] else [*TRACE_HOSTS, None]
-        with ThreadPoolExecutor(max_workers=6) as pool:
-            if request is None:
-                pending = {
-                    (family, host): pool.submit(query, family, host)
-                    for family in before.families
-                    for host in hosts
-                }
-            else:
-                pending = {
-                    (family, None): pool.submit(request, family) for family in before.families
-                }
+        keys = [
+            (family, host)
+            for family in before.families
+            for host in (hosts if request is None else [None])
+        ]
+        failures = {}
+
+        def collect(pending):
+            transient = {}
             for (family, host), task in pending.items():
                 provider = host or "ifconfig.io"
                 try:
@@ -246,6 +251,7 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
                     address = ipaddress.ip_address(config.normalize_ip(result.ip))
                     if address.version != family or not address.is_global or address.is_multicast:
                         raise ValueError("invalid public IP result")
+                    failures.pop((family, host), None)
                     observations.setdefault(provider, {})[family] = {
                         "country": result.country,
                         "ip": str(address),
@@ -261,9 +267,38 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
                         countries[family] = error.country
                     if error.ip is not None:
                         ips[family] = error.ip
-                    errors[family] = f"{provider}: {error}"
+                    failures[family, host] = f"{provider}: {error}"
+                    transient[family, host] = error.transient
                 except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-                    errors[family] = f"IPv{family}: verification failed ({type(error).__name__})"
+                    failures[family, host] = (
+                        f"IPv{family}: verification failed ({type(error).__name__})"
+                    )
+                    transient[family, host] = isinstance(
+                        error, (TimeoutError, subprocess.TimeoutExpired)
+                    )
+            return transient
+
+        def submit(pool, key):
+            family, host = key
+            if request is None:
+                return pool.submit(query, family, host)
+            return pool.submit(request, family)
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            transient = collect({key: submit(pool, key) for key in keys})
+            mismatch = any(country != target for country in countries.values()) or (
+                allowed_ips and any(ip not in allowed_ips for ip in ips.values())
+            )
+            # One retry for a dropped request, never for a confirmed mismatch or a hard error.
+            if (
+                transient
+                and all(transient.values())
+                and not mismatch
+                and time.monotonic() - started + RETRY_SECONDS <= DEADLINE_SECONDS
+            ):
+                collect({key: submit(pool, key) for key in transient})
+        for (family, _host), message in failures.items():
+            errors[family] = message
         if errors:
             return verdict(False, "verification failed: " + "; ".join(errors.values()))
         dns_guard.check_hosts()

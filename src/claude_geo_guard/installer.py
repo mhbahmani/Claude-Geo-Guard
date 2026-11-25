@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import cli_launcher, config, settings_manager
 from . import shell
+from .executables import Ambiguous
 from .platforms import backend
 from .policy import normalize_country
 from .storage import Transaction, decode, encode, json_bytes, lock, read
@@ -27,7 +28,13 @@ LIMITATION = (
 
 def load_manifest(paths):
     raw = read(paths.manifest)
-    return json.loads(raw) if raw else None
+    try:
+        return json.loads(raw) if raw else None
+    except ValueError as error:
+        raise ValueError(
+            f"installation manifest {paths.manifest} is not valid JSON ({error}); restore it "
+            f"from {paths.manifest.parent / 'backups'} before changing the installation"
+        ) from None
 
 
 def inspect_environment(paths):
@@ -133,13 +140,13 @@ def preflight(
             raise ValueError("refusing to overwrite existing Claude Guard.app")
         backend("service").run("print", backend("service").domain())
     entries = desktop_entries.discover(paths) if linux_desktop else []
-    desktops = []
+    desktops, skipped, released, launchers = [], [], [], set()
     binaries = {mac_app["executable"]} if mac_app else set()
     old_desktops = {d["target"]: d for d in (old or {}).get("desktops", [])}
     # Keep tracking hidden/removed entries to avoid orphaning an override on repeat install.
     found = {str(e.target) for e in entries}
     for target, record in old_desktops.items():
-        if target not in found:
+        if target not in found and Path(target).is_file():
             entries.append(
                 desktop_entries.Entry(
                     record["id"],
@@ -151,6 +158,7 @@ def preflight(
             )
     for entry in entries:
         previous = old_desktops.get(str(entry.target))
+        current_text = entry.text
         source_text = entry.text
         restore_text = entry.text if entry.source == entry.target else None
         if previous:
@@ -182,8 +190,27 @@ def preflight(
                 source_text = restored
             entry.source = source
             entry.text = restored
-        changed, exes, edits = desktop_entries.intercept(entry, guard)
+        try:
+            changed, exes, edits = desktop_entries.intercept(entry, guard)
+        except Ambiguous as error:
+            skipped.append(str(error))
+            if previous:
+                # An older release registered this shortcut; hand it back unguarded.
+                released.append(
+                    {
+                        "target": str(entry.target),
+                        "current": current_text,
+                        "data": restore_text,
+                    }
+                )
+            continue
         binaries.update(exes)
+        parsed = desktop_entries.values(entry.text)
+        launchers.update(
+            str(desktop_entries.launcher(section["Exec"]))
+            for name, section in parsed.items()
+            if "Exec" in section and (name == "Desktop Entry" or name.startswith("Desktop Action "))
+        )
         desktops.append(
             {
                 "id": entry.id,
@@ -216,6 +243,9 @@ def preflight(
         "settings": merged,
         "settings_raw": original_raw,
         "desktops": desktops,
+        "skipped_desktops": skipped,
+        "released_desktops": released,
+        "launchers": sorted(launchers),
         "mac_app": mac_app,
         "binaries": sorted(binaries),
         "interval": interval,
@@ -240,6 +270,7 @@ def summary(plan):
         "claude_code": plan["binary"],
         "version": plan["version"],
         "desktop_overrides": [d["target"] for d in plan["desktops"]],
+        "unprotected_shortcuts": plan.get("skipped_desktops", []),
         "monitor": bool(plan["desktops"] or plan.get("mac_app")),
         "mac_app": plan.get("mac_app"),
         "desktop_error_dialog": dialogs.available(),
@@ -349,6 +380,9 @@ def install(paths, plan):
             bootstrap = (
                 "import sys\nfrom pathlib import Path\n"
                 "sys.path.insert(0, str(Path(__file__).parent))\n"
+                "from claude_geo_guard.paths import Paths\n"
+                f"Paths.pin({str(paths.home)!r}, {str(paths.data)!r}, "
+                f"{str(paths.config)!r}, {str(paths.state)!r})\n"
                 "from claude_geo_guard.cli import main\nraise SystemExit(main())\n"
             )
             write(paths.root / "lib/bootstrap.py", bootstrap.encode())
@@ -364,6 +398,13 @@ def install(paths, plan):
                 write(paths.bin / name, script.encode(), 0o755)
             write(paths.settings, json_bytes(plan["settings"]), kind="settings")
             settings_manager.parse(read(paths.settings))
+            for release in plan.get("released_desktops", []):
+                target = Path(release["target"])
+                if read(target) != release["current"].encode():
+                    raise ValueError(f"desktop entry changed since inspection; retry: {target}")
+                data = None if release["data"] is None else release["data"].encode()
+                tx.write(target, data, stat.S_IMODE(target.stat().st_mode))
+                records.pop(str(target), None)
             for desktop in plan["desktops"]:
                 write(Path(desktop["target"]), desktop["after"].encode(), 0o644, "desktop")
                 if shutil.which("desktop-file-validate"):
@@ -410,6 +451,7 @@ def install(paths, plan):
                 "original_settings": old.get("original_settings", encode(plan["settings_raw"])),
                 "desktops": plan["desktops"],
                 "binaries": plan["binaries"],
+                "launchers": plan.get("launchers", []),
                 "shell_block": managed_block,
                 "claude_binary": plan["claude_binary"],
                 "code_version": plan["version"],

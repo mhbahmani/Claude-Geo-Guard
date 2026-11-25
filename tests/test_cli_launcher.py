@@ -1,3 +1,4 @@
+import json
 import os
 import shlex
 import subprocess
@@ -6,8 +7,22 @@ from unittest.mock import Mock
 import pytest
 
 from claude_geo_guard import cli_launcher as cl
+from claude_geo_guard import settings_manager
 from claude_geo_guard.checker import Verdict
 from conftest import script
+
+
+def register_hooks(paths, **extra):
+    guard = paths.bin / "claude-geo-guard"
+    data = settings_manager.merge(extra, settings_manager.owned_groups(guard), guard)
+    paths.settings.parent.mkdir(parents=True, exist_ok=True)
+    paths.settings.write_text(json.dumps(data))
+    return data
+
+
+@pytest.fixture
+def hooks(environment):
+    return register_hooks(environment["paths"])
 
 
 def test_discovery_recursion_and_explicit(environment):
@@ -53,7 +68,7 @@ def test_supported_version(environment, text):
     assert cl.version(binary) == text
 
 
-def test_version_timeout_blocks_launch(environment, monkeypatch):
+def test_version_timeout_blocks_launch(environment, hooks, monkeypatch):
     binary = environment["bins"] / "claude"
     command = [str(binary), "--version"]
     probe = Mock(side_effect=subprocess.TimeoutExpired(command, 30))
@@ -68,7 +83,7 @@ def test_version_timeout_blocks_launch(environment, monkeypatch):
     execute.assert_not_called()
 
 
-def test_launch_argv(environment, monkeypatch):
+def test_launch_argv(environment, hooks, monkeypatch):
     monkeypatch.setattr(cl, "check", lambda: Verdict(True, "GB", {4: "GB"}))
     execute = Mock()
     monkeypatch.setattr(os, "execve", execute)
@@ -78,13 +93,87 @@ def test_launch_argv(environment, monkeypatch):
     execute.assert_called_once_with(binary, [binary, *args], dict(os.environ))
 
 
-def test_deny_never_executes(environment, monkeypatch):
+def test_deny_never_executes(environment, hooks, monkeypatch):
     monkeypatch.setattr(cl, "check", lambda: Verdict(False, "denied", {}))
     execute = Mock()
     monkeypatch.setattr(os, "execve", execute)
     with pytest.raises(ValueError):
         cl.launch(environment["paths"], [])
     execute.assert_not_called()
+
+
+def test_version_probe_runs_before_final_egress_check(environment, hooks, monkeypatch):
+    order = []
+    monkeypatch.setattr(cl, "version", lambda binary: order.append("version"))
+    monkeypatch.setattr(cl, "check", lambda: order.append("check") or Verdict(True, "GB", {}))
+    monkeypatch.setattr(os, "execve", Mock())
+    cl.launch(environment["paths"], [])
+    assert order == ["version", "check"]
+
+
+@pytest.mark.parametrize(
+    "args,environ,message",
+    [
+        (["--bare", "-p", "hi"], {}, "--bare starts Claude Code in bare mode"),
+        (["-p", "hi", "--safe-mode"], {}, "--safe-mode"),
+        (["--restricted"], {}, "--restricted"),
+        ([], {"CLAUDE_CODE_SIMPLE": "1"}, "CLAUDE_CODE_SIMPLE"),
+        ([], {"CLAUDE_CODE_SAFE_MODE": "true"}, "CLAUDE_CODE_SAFE_MODE"),
+        (["--setting-sources", "project,local"], {}, "--setting-sources without user"),
+        (["--setting-sources=project"], {}, "--setting-sources without user"),
+        (["--settings", '{"disableAllHooks": true}'], {}, "sets disableAllHooks"),
+        (["--settings", "/missing/settings.json"], {}, "cannot read --settings"),
+        ([], {"CLAUDE_CONFIG_DIR": "/elsewhere"}, "hooks are missing or edited in /elsewhere"),
+    ],
+)
+def test_invocations_without_hooks_are_refused(environment, hooks, args, environ, message):
+    with pytest.raises(ValueError, match=message.replace("(", r"\(")):
+        cl.hook_coverage(environment["paths"], args, environ)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["-p", "explain the --bare flag"],
+        ["-p", "--", "--bare"],
+        ["--append-system-prompt", "--bare", "hello"],
+        ["--model", "sonnet", "--settings", '{"model": "opus"}', "prompt"],
+        ["--setting-sources", "user,project"],
+        ["--version"],
+        [],
+    ],
+)
+def test_ordinary_prompts_and_option_values_pass(environment, hooks, args):
+    cl.hook_coverage(environment["paths"], args, {"CLAUDE_CODE_SIMPLE": "0"})
+
+
+def test_missing_or_edited_hooks_block_before_network(environment, monkeypatch):
+    paths = environment["paths"]
+    probe = Mock()
+    monkeypatch.setattr(cl, "check", probe)
+    monkeypatch.setattr(os, "execve", Mock())
+    with pytest.raises(ValueError, match="hooks are missing"):
+        cl.launch(paths, ["hello"])
+    data = register_hooks(paths, model="mine")
+    data["hooks"]["PreToolUse"][0]["hooks"][0]["onFailure"] = "ignore"
+    paths.settings.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="project hook conflict"):
+        cl.launch(paths, ["hello"])
+    data["hooks"]["PreToolUse"][0]["hooks"][0]["onFailure"] = "block"
+    paths.settings.write_text(json.dumps(dict(data, disableAllHooks=True)))
+    with pytest.raises(ValueError, match="disable user hooks"):
+        cl.launch(paths, ["hello"])
+    probe.assert_not_called()
+
+
+def test_project_settings_disabling_hooks_are_refused(environment, hooks, tmp_path, monkeypatch):
+    project = tmp_path / "repo"
+    (project / ".claude").mkdir(parents=True)
+    (project / ".claude/settings.local.json").write_text('{"disableAllHooks": true}')
+    monkeypatch.chdir(project)
+    with pytest.raises(ValueError, match="settings.local.json sets disableAllHooks"):
+        cl.hook_coverage(environment["paths"], [], {})
+    cl.hook_coverage(environment["paths"], ["--setting-sources", "user,project"], {})
 
 
 def test_missing_binary(tmp_path):

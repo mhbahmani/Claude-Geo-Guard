@@ -88,11 +88,14 @@ else:
     print("[]")
 """,
     )
+    # A started fake unit reports readiness for this live test process, like a real monitor.
+    monkeypatch.setenv("FAKE_MONITOR_PID", str(os.getpid()))
     script(
         bins / "systemctl",
-        """import os, sys
+        """import json, os, sys
 from pathlib import Path
 state = Path(os.environ["HOME"]) / "systemd-state"
+health = Path(os.environ["XDG_STATE_HOME"]) / "claude-geo-guard/monitor-health.json"
 args = sys.argv[2:]
 if args[0] in ("is-active", "is-enabled"):
     sys.exit(0 if state.exists() else 3)
@@ -100,8 +103,13 @@ if args[0] in ("start", "restart"):
     if os.environ.get("FAKE_SYSTEMD_FAIL"):
         sys.exit(1)
     state.touch()
+    pid = int(os.environ["FAKE_MONITOR_PID"])
+    start = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19])
+    health.parent.mkdir(parents=True, exist_ok=True)
+    health.write_text(json.dumps({"pid": pid, "start": start, "status": "ready"}))
 if args[0] in ("stop", "disable"):
     state.unlink(missing_ok=True)
+    health.unlink(missing_ok=True)
 """,
     )
     script(bins / "notify-send", "raise SystemExit(0)\n")
