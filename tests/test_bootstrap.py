@@ -48,6 +48,12 @@ else: print('{"tag_name":"v0.2.0"}')
         check=True,
     )
     assert json.loads(result.stdout) == ["install", *args]
+    version = "master" if dev else "v0.2.0"
+    messages = result.stderr.decode().splitlines()
+    if not dev:
+        assert "Looking up the latest" in messages[0]
+    assert f"Downloading Claude Geo Guard {version} from GitHub" in messages[-2]
+    assert "Download complete" in messages[-1]
     requests = urls.read_text().splitlines()
     assert requests[-1].endswith("refs/heads/master" if dev else "refs/tags/v0.2.0")
     assert len(requests) == (1 if dev else 2)
