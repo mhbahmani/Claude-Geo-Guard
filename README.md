@@ -2,6 +2,8 @@
 
 Check the public country and IP before opening Claude Code or Claude Desktop on macOS and Linux. If verification fails, the guard blocks the launch. A background monitor periodically checks running Desktop processes.
 
+![Claude Geo Guard blocks a Desktop launch because the detected country is France and the allowed country is Germany.](docs/guard-country-mismatch.png)
+
 ## Install
 
 With curl, Python 3.10+ and Claude Code 2.1.295+ installed, run this in a terminal as your regular user:
