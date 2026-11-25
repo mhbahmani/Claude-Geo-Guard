@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1
+
+- Fix flaky installer animation tests on macOS by waiting for an observed animation cycle instead of a fixed sleep. Runtime behavior is unchanged.
+
 ## 0.10.0
 
 - Add `last-stop` to summarize the latest recorded Linux monitor closure, including its time, reason, country evidence, and process count.
