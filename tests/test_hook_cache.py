@@ -124,8 +124,14 @@ def test_denial_stops_the_turn_without_telling_the_model(guard):
     assert guard.hook("UserPromptSubmit").returncode == 0  # A denial is never reused.
 
 
-def test_monitor_publishes_until_the_next_check_and_clears_on_route_change(isolated):
+def test_monitor_publishes_until_the_next_check_and_clears_on_route_change(isolated, monkeypatch):
     atomic_write(isolated.guard_config, json_bytes(config.DEFAULTS))
+    hosts = isolated.guard_config.with_name("hosts")
+    hosts.write_text("127.0.0.1 localhost\n")
+    monkeypatch.setattr(verdict_cache, "HOSTS", hosts)
+    # Equal timestamps deliberately invalidate the cache; don't depend on filesystem precision.
+    for source in (isolated.guard_config, hosts):
+        os.utime(source, (1, 1))
     share = monitor._sharer(isolated, 15)
     share(ALLOWED)
     kind, _message, _written, expires = verdict_cache.read(isolated)
