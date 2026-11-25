@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0
 
 - On Linux, a country or IP mismatch, or another hard failure, now pauses Claude Desktop instead of closing it. Its network service, embedded Claude Code and helpers stop at once, while the window stays usable for scrolling and reading. A notification explains the pause. Claude resumes after the next passing check, which a routing change such as disconnecting a VPN triggers immediately. If the window opens a connection itself, it is paused too.
 - Claude closes only when a pause stays unresolved for 10 minutes. It is frozen first, so nothing more is sent and no new process can start during shutdown. The journal reports whether every process exited (`verified`) and lists survivors.
