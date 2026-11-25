@@ -167,6 +167,11 @@ def parser():
     mon = sub.add_parser("monitor")
     mon.add_argument("--interval", type=float, help="override config interval for this invocation")
     mon.add_argument("--grace", type=float, help="override config grace for this invocation")
+    mon.add_argument(
+        "--pause-limit",
+        type=float,
+        help="seconds Claude stays paused after a failed check before it is closed (default 600)",
+    )
     for name in ("code", "desktop"):
         launch = sub.add_parser(name, help=argparse.SUPPRESS)
         launch.add_argument("args", nargs=argparse.REMAINDER)
@@ -304,7 +309,9 @@ def main(argv=None):
         elif args.command == "uninstall":
             print(json.dumps(installer.uninstall(paths), indent=2))
         elif args.command == "monitor":
-            monitor.run(paths, args.interval, args.grace)
+            if args.pause_limit is not None and not 0 <= args.pause_limit <= 86400:
+                raise ValueError("--pause-limit must be between 0 and 86400 seconds")
+            monitor.run(paths, args.interval, args.grace, args.pause_limit)
         elif args.command in {"code", "desktop"}:
             forwarded = args.args[1:] if args.args[:1] == ["--"] else args.args
             if args.command == "desktop":

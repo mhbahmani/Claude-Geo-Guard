@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- On Linux, a country or IP mismatch, or another hard failure, now pauses Claude Desktop instead of closing it. Its network service, embedded Claude Code and helpers stop at once, while the window stays usable for scrolling and reading. A notification explains the pause. Claude resumes after the next passing check, which a routing change such as disconnecting a VPN triggers immediately. If the window opens a connection itself, it is paused too.
+- Claude closes only when a pause stays unresolved for 10 minutes. It is frozen first, so nothing more is sent and no new process can start during shutdown. The journal reports whether every process exited (`verified`) and lists survivors.
+- The Desktop launcher starts Claude in its own systemd user scope, so pauses and closures reach helpers that detach from the process tree, such as the crash handler. Doctor reports a Desktop started outside a scope. Reopen Claude from the Applications menu after updating.
+- Disabling protection or stopping the monitor resumes a paused Claude. A monitor restarted after a crash takes over an existing pause.
+
 ## 0.11.0
 
 - Failed provider requests log numeric DNS, connection and TLS timings, and failure messages retain errors from both endpoints.

@@ -29,7 +29,7 @@ def same(fingerprint):
 def run_tick(verdicts, connectivity, **kwargs):
     killer = Mock()
     sequence = iter(verdicts)
-    kwargs.setdefault("pauser", Mock(side_effect=lambda found: list(found)))
+    kwargs.setdefault("pauser", Mock(side_effect=lambda found, binaries=(): list(found)))
     kwargs.setdefault("resumer", Mock())
     result = monitor.tick(
         {"/opt/claude"},
@@ -146,7 +146,7 @@ def test_network_change_pauses_until_verified():
     connectivity.allowed(ALLOWED)
     verified = Verdict(True, "verified", {4: "GB"}, "GB", fingerprint="cafe")
     _, killer, calls = run_tick([TIMEOUT, verified], connectivity, check_due=False)
-    calls["pauser"].assert_called_once_with([APP])
+    calls["pauser"].assert_called_once_with([APP], {"/opt/claude"})
     calls["resumer"].assert_called_once_with([APP])
     assert not killer.called and connectivity.known == {"cafe"}
     # The verified network does not pause again, and an unscheduled event does no check.

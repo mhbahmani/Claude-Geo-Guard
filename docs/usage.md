@@ -19,7 +19,9 @@ flowchart TD
     Check -->|All families match configured country| App[Original application]
     Check -->|Country mismatch / unknown / failure| Deny[Deny checkpoint]
     Service[systemd user monitor] -->|While Desktop runs| Check
-    Service -->|Violation| Stop[SIGTERM then identity-checked SIGKILL]
+    Service -->|Violation| Pause[Pause Claude's network side; window stays usable]
+    Pause -->|Check passes| Resume[Resume Claude]
+    Pause -->|Still failing after 10 minutes| Stop[Freeze everything, then kill and confirm exit]
     Hooks[Submit / expansion / pre-tool hooks] --> Check
 ```
 
@@ -115,7 +117,7 @@ Your editable settings live in **`~/.config/claude-geo-guard/config.json`**, or 
 | `allowed_country` | Allowed ISO country code; default `GB`. |
 | `timezone` | IANA timezone for new Claude processes; `null` or `"inherit"` uses the normal environment (the default). |
 | `interval` | Seconds between completed monitor cycles; 5–300, default 15. |
-| `grace` | Seconds between graceful and forced termination; 0–30, default 5. This is not a retry window for network failures. |
+| `grace` | Seconds between graceful and forced termination on macOS; 0–30, default 5. On Linux, Claude is paused instead and, if it must close, is frozen first, so no grace period applies. |
 | `enabled` | Defaults to `true`. Set to `false` to skip automatic launch checks, timezone overrides, hook checks and runtime monitoring. |
 | `allowed_ips` | Optional array of exact IPv4/IPv6 addresses. Omitted or `[]` disables IP matching; country checking remains required. |
 | `success_notifications` | Optional boolean; `true` (default) confirms guarded Desktop launches, `false` disables success confirmations. |
@@ -177,7 +179,16 @@ systemctl --user status claude-geo-guard.service
 journalctl --user -u claude-geo-guard.service
 ```
 
-The user service starts with the user manager and does not require a terminal or root. Default interval: 15 seconds **after each completed cycle**, plus the check's duration; grace: 5 seconds. Configurable ranges are 5–300 seconds and 0–30 seconds respectively. No requests are made while no protected Desktop processes are found. On violation, the monitor refreshes the process tree, sends SIGTERM, then SIGKILL to surviving identified processes. It never restarts Claude. Persistent journal logging is governed by your system's journald configuration.
+The user service starts with the user manager and does not require a terminal or root. Default interval: 15 seconds **after each completed cycle**, plus the check's duration; grace: 5 seconds. Configurable ranges are 5–300 seconds and 0–30 seconds respectively. No requests are made while no protected Desktop processes are found. It never restarts Claude. Persistent journal logging is governed by your system's journald configuration.
+
+On Linux, the Desktop launcher starts Claude in its own systemd user scope, so every helper it starts stays identifiable even after it detaches. When a check fails for a reason other than connectivity, such as a country or IP mismatch, the monitor **pauses** Claude instead of closing it:
+
+- The network service, the embedded Claude Code and other helpers are stopped. The window keeps running, so you can scroll and read loaded chats; anything that needs the network waits.
+- A notification names the detected country. Checks continue at the normal interval, and a routing change, such as disconnecting a VPN, triggers one immediately. Claude resumes as soon as a check passes; a routing change alone never resumes it.
+- While paused, the monitor looks every two seconds for new helpers and for connections opened by the window's own processes. If the window connects directly, it is paused too.
+- If no check passes within 10 minutes (`--pause-limit` on a manually started monitor), Claude is frozen completely, killed, and the monitor confirms that every process exited.
+
+Disabling protection or stopping the monitor resumes a paused Claude. If the monitor crashes, its replacement takes over the pause. On macOS the monitor still closes Claude with SIGTERM followed by SIGKILL after the grace period.
 
 When the monitor starts closing Claude after a failed check, it requests an error window immediately. On Linux it also sends a critical desktop notification so you can see the reason if another window has focus. Its **Show details** view includes the failure reason and the command for reading the journal. The dialog runs in a separate worker: leaving it open does not pause checks or termination. Only one runtime window is shown at a time; additional incidents still appear in the journal. Closing the window never relaunches Claude. Stopping the monitor also closes its dialog helper. If the service cannot display the window, it records the failure in the journal.
 
@@ -188,8 +199,7 @@ journalctl --user -u claude-geo-guard.service -n 100 --no-pager -o short-iso
 journalctl --user -u claude-geo-guard.service -f
 ```
 
-`runtime_check` records the verdict, country codes, provider and process count. `runtime_stop_requested` records why termination began; `runtime_stop_finished` means the termination routine returned, not proof of network isolation. Provider failures identify the address family, a safe error category, curl exit code and HTTP status when available. For example, `IPv4: provider request timed out (curl exit 28)` distinguishes a timeout from a country mismatch. Raw provider bodies, headers and credentials are not logged; the monitor journal omits observed IP addresses. CLI check output, Desktop failure stderr and UI messages include returned IPs as requested. Old entries containing only `CalledProcessError` cannot reveal the original curl exit code retroactively. One failed verification still triggers closure under the existing fail-closed policy; this update does not introduce retries or a grace period for connectivity failures.
-
+`runtime_check` records the verdict, country codes, provider and process count. `runtime_paused`, `runtime_pause_escalated` and `runtime_resumed` record a pause. `runtime_stop_requested` records why termination began. On Linux, `runtime_stop_finished` reports `verified: true` only when every stopped process exited, and lists survivors otherwise. Provider failures identify the address family, a safe error category, curl exit code and HTTP status when available. For example, `IPv4: provider request timed out (curl exit 28)` distinguishes a timeout from a country mismatch. Raw provider bodies, headers and credentials are not logged; the monitor journal omits observed IP addresses. CLI check output, Desktop failure stderr and UI messages include returned IPs as requested. Old entries containing only `CalledProcessError` cannot reveal the original curl exit code retroactively.
 Process selection uses exact executable paths, the current UID, `/proc` ancestry and process start times. Signals use pidfds, with identity revalidation, to avoid killing a reused PID. Previously observed children remain tracked after reparenting during the monitor's lifetime. Already detached children that have never been observed, and children surviving a monitor restart without a recognizable executable, may be missed.
 
 Launches through the desktop override require an active monitor. The launcher starts an inactive monitor and denies launch if startup fails; an already running app is not automatically isolated if the monitor dies. Service restarts are rate-limited. Restart existing Claude sessions after installation so settings are loaded, and review the journal for running instances.

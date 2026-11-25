@@ -142,12 +142,13 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
     app = subprocess.Popen([str(environment["desktop"]), "60"])
     other = subprocess.Popen(["/bin/sleep", "60"])
     mon = subprocess.Popen(
-        [str(paths.bin / "claude-geo-guard"), "monitor", "--interval", "5", "--grace", "0.1"],
+        [str(paths.bin / "claude-geo-guard"), "monitor", "--interval", "5", "--pause-limit", "1"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
     try:
-        assert app.wait(timeout=10) == -signal.SIGTERM
+        # A mismatch pauses first; the unresolved pause then stops the app outright.
+        assert app.wait(timeout=20) == -signal.SIGKILL
         assert other.poll() is None
         dialog = paths.home / "runtime-dialog.json"
         deadline = time.monotonic() + 5
@@ -165,7 +166,8 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
         logs = mon.stderr.read()
         assert b'"allowed": false' in logs
         assert b'"FR"' in logs
-        assert b"runtime_stop_requested" in logs and b"runtime_stop_finished" in logs
+        assert logs.index(b"runtime_paused") < logs.index(b"runtime_stop_requested")
+        assert b'"verified": true' in logs
     finally:
         for child in (app, other, mon):
             if child.poll() is None:

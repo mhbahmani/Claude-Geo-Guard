@@ -34,10 +34,10 @@ def terminate(*args, **kwargs):
     return backend("processes").terminate(*args, **kwargs)
 
 
-def pause(processes):
-    """Freeze processes where the platform supports it; returns those paused."""
+def pause(processes, binaries=frozenset()):
+    """Freeze network-capable processes where supported; returns those paused."""
     adapter = backend("processes")
-    return adapter.pause(processes) if hasattr(adapter, "pause") else []
+    return adapter.pause(processes, binaries) if hasattr(adapter, "pause") else []
 
 
 def resume(processes):

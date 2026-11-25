@@ -90,6 +90,13 @@ else:
     print("[]")
 """,
     )
+    script(
+        bins / "systemd-run",
+        """import os, sys
+command = sys.argv[sys.argv.index("--") + 1:]
+os.execvp(command[0], command)
+""",
+    )
     # A started fake unit reports readiness for this live test process, like a real monitor.
     monkeypatch.setenv("FAKE_MONITOR_PID", str(os.getpid()))
     script(

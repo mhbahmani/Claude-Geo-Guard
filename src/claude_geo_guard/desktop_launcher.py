@@ -72,10 +72,11 @@ def launch(paths, args):
         raise ValueError("missing desktop command")
     executable = resolve(executables.load_manifest(paths), args[0])
     preferences = config.load(paths)
+    command = backend("containment").command([executable, *args[1:]])
     if not preferences["enabled"]:
         print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
         backend("dialogs").show_warning(config.DISABLED_MESSAGE)
-        return os.execve(executable, [executable, *args[1:]], os.environ)
+        return os.execve(command[0], command, os.environ)
     with verifying():
         wait_until_ready(paths, systemd)
         verdict = check()
@@ -94,4 +95,4 @@ def launch(paths, args):
         from .platforms.linux.dialogs import show_success
 
         show_success(verdict)
-    os.execve(executable, [executable, *args[1:]], environment)
+    os.execve(command[0], command, environment)

@@ -10,6 +10,7 @@ from .checker import Verdict, check
 from .desktop_launcher import LaunchBlocked
 from .platforms import backend
 from .platforms import Unroutable, pause, resume, scan, snapshot, terminate, watch
+from .quarantine import LIMIT_SECONDS, MAINTAIN_SECONDS, Quarantine
 from .storage import lock
 
 LOG = logging.getLogger("claude-geo-guard")
@@ -162,6 +163,7 @@ def tick(
     check_due=True,
     pauser=pause,
     resumer=resume,
+    quarantine=None,
 ):
     processes = scanner(binaries, previous)
     if not processes:
@@ -170,9 +172,9 @@ def tick(
     moved = connectivity is not None and connectivity.moved()
     if not (check_due or moved):
         return processes
-    if moved:
+    if moved and not (quarantine is not None and quarantine.active):
         # Claude must not talk over an unchecked network while verification runs.
-        paused = pauser(processes)
+        paused = pauser(processes, binaries)
         _log("network_changed", logging.WARNING, paused_count=len(paused))
     try:
         return _decide(
@@ -187,6 +189,7 @@ def tick(
             notifier,
             paths,
             connectivity,
+            quarantine,
         )
     finally:
         resumer(paused)
@@ -204,6 +207,7 @@ def _decide(
     notifier,
     paths,
     connectivity,
+    quarantine,
 ):
     verdict = checker()
     if paused:
@@ -222,6 +226,8 @@ def _decide(
         )
     )
     if verdict.allowed:
+        if quarantine is not None:
+            quarantine.release("verified")
         if connectivity is not None and connectivity.allowed(verdict):
             _log("connection_restored")
             connectivity.announce(ONLINE_MESSAGE)
@@ -246,6 +252,10 @@ def _decide(
                     return []
             except (OSError, ValueError):
                 pass  # An unreadable configuration still fails closed.
+        if quarantine is not None:
+            quarantine.engage(processes, binaries, verdict, adopted=paused)
+            paused.clear()  # Now held by the quarantine, not resumed by this check.
+            return processes
         LOG.warning(
             json.dumps(
                 {
@@ -380,8 +390,23 @@ def _announcer():
     return announce
 
 
-def run(paths, interval=None, grace=None):
-    backend("processes")  # Reject unavailable runtime protection before acquiring a lock.
+def _rest(wake, seconds, quarantine):
+    """Sleep until the next check; while paused, keep the pause complete in between."""
+    if quarantine is None or not quarantine.active:
+        return wake.sleep(seconds)
+    end = time.monotonic() + seconds
+    while True:
+        if wake.sleep(min(max(0.0, end - time.monotonic()), MAINTAIN_SECONDS)):
+            return True
+        if wake.stop.is_set() or time.monotonic() >= end:
+            return False
+        quarantine.maintain()
+        if quarantine.expired():
+            return False
+
+
+def run(paths, interval=None, grace=None, pause_limit=None):
+    adapter = backend("processes")  # Reject unavailable runtime protection before a lock.
     for key, value in (("interval", interval), ("grace", grace)):
         if value is not None:
             config.validate_timing(key, value)
@@ -392,11 +417,22 @@ def run(paths, interval=None, grace=None):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     alerts = RuntimeAlerts(stop)
     routes = RouteWatch(wake.poke)
+    quarantine = None
 
     try:
         with lock(paths.manifest.parent / "monitor.lock"):
             coverage = Coverage(paths)
-            connectivity = Connectivity(announce=_announcer())
+            announce = _announcer()
+            connectivity = Connectivity(announce=announce)
+            if hasattr(adapter, "halt"):
+                quarantine = Quarantine(
+                    paths.manifest.parent / "paused.json",
+                    announce,
+                    adapter,
+                    LIMIT_SECONDS if pause_limit is None else pause_limit,
+                )
+                coverage.refresh()
+                quarantine.recover(coverage.binaries)
             previous, state = [], ()
             network_event, deadline = False, 0.0
             while not stop.is_set():
@@ -421,6 +457,8 @@ def run(paths, interval=None, grace=None):
                     _transition(paths, problem, config_error is not None)
                     state = problem
                 if not enabled:
+                    if quarantine is not None:
+                        quarantine.release("protection disabled", announce=False)
                     previous, network_event = [], False
                     wake.sleep(cycle_interval)
                     continue
@@ -434,15 +472,22 @@ def run(paths, interval=None, grace=None):
                     checker=checker,
                     connectivity=connectivity,
                     check_due=not network_event,
+                    quarantine=quarantine,
                 )
+                if quarantine is not None and quarantine.expired():
+                    quarantine.close(alerts)
+                    previous = []
                 if network_event:
                     # Routing events must not postpone the regular schedule.
                     pending = max(0.0, deadline - time.monotonic())
                 else:
                     pending = connectivity.delay(cycle_interval)
                     deadline = time.monotonic() + pending
-                network_event = wake.sleep(pending)
+                network_event = _rest(wake, pending, quarantine)
     finally:
+        if quarantine is not None:
+            # A stopped monitor no longer protects anything; frozen apps must not stay stuck.
+            quarantine.release("monitor stopped", announce=False)
         routes.close()
         health.withdraw(paths)
         alerts.close()

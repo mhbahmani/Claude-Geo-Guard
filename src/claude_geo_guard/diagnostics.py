@@ -116,6 +116,15 @@ def diagnostics(paths):
             executables.manifest_launchers(manifest), known
         )
         report["accepted_updates"] = sorted(accepted - known)
+        processes = backend("processes")
+        running = [p for p in processes.scan(known | accepted) if p.executable in known | accepted]
+        containment = backend("containment")
+        if any(containment.scope(p.pid) is None for p in running):
+            notes.append(
+                "Claude Desktop is running outside a guard scope, for example because it started "
+                "before this update. Quit it and reopen it from the Applications menu so a "
+                "pause or closure also reaches its detached helpers"
+            )
         for launcher, target in sorted(unrecognized.items()):
             issues.append(
                 f"Claude launcher {launcher} now points to {target or 'a missing file'}, outside "

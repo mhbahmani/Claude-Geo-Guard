@@ -101,7 +101,11 @@ def test_desktop_launch_gate(environment, monkeypatch, allowed, active):
     args = [str(environment["desktop"]), "claude://hello world"]
     if allowed and active:
         desktop_launcher.launch(paths, args)
-        execute.assert_called_once_with(args[0], args, dict(os.environ))
+        program, argv, environ = execute.call_args.args
+        assert program == str(environment["bins"] / "systemd-run") == argv[0]
+        assert argv[1:4] == ["--user", "--scope", "--quiet"]
+        assert any(a.startswith("--unit=claude-geo-guard-desktop-") for a in argv)
+        assert argv[argv.index("--") + 1 :] == args and environ == dict(os.environ)
     else:
         with pytest.raises(ValueError):
             desktop_launcher.launch(paths, args)

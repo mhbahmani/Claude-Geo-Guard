@@ -69,12 +69,14 @@ flowchart TD
     Monitor["launchd or systemd user monitor"] -->|While Desktop runs| Recheck["Recheck periodically"]
     Recheck -->|Pass| Keep["Leave Desktop running"]
     Recheck -->|Offline after 3 tries| Keep
-    Recheck -->|Mismatch or hard failure| Stop["Terminate identified Desktop processes"]
+    Recheck -->|Mismatch or hard failure| Pause["Pause Claude's network side; window stays usable"]
+    Pause -->|Check passes| Keep
+    Pause -->|Unresolved for 10 minutes| Stop["Freeze, then close Claude"]
 ```
 
 ## Why “best effort”?
 
-Suppose your VPN disconnects just after Desktop passes a check. The monitor waits **15 seconds by default** between checks. Claude can send traffic during that wait, while the next check runs, and while the app is closing. On Linux, a routing change wakes the monitor immediately and pauses Desktop until the new network is verified, which narrows the window but does not close it. Launching the original Desktop executable directly also skips the first check, leaving the monitor to detect it later.
+Suppose your VPN disconnects just after Desktop passes a check. The monitor waits **15 seconds by default** between checks. Claude can send traffic during that wait and while the next check runs. On Linux, a routing change wakes the monitor immediately and pauses Claude's network side until the new network is verified, which narrows the window but does not close it. A failed check pauses rather than closes Desktop; it reconnects after the next passing check. Launching the original Desktop executable directly also skips the first check, leaving the monitor to detect it later.
 
 The two Claude traces test destination-specific routing directly. For example, if the web trace sees a UK IP but the API trace sees a German IP, a GB policy denies access in either mode. A passing result describes those probe connections at that moment. A later request, another hostname, or a proxy configured inside Claude can use a different route. The guard cannot enforce the route of every application request.
 
