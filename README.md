@@ -24,6 +24,8 @@ Setup asks whether to enable the guard immediately. Press Enter for yes on first
 
 With protection enabled, the Desktop launcher shows a progress window while checking your public IP and country. The CLI shows animated dots in the terminal, or a single status line when stderr is redirected. Claude starts only after verification succeeds. A timeout keeps it closed. On Linux, reinstall from this checkout with `python3 -IB run.py install --yes` to repair an existing Claude-generated menu entry.
 
+Cursor can import Claude Code hooks. The guard silently skips Cursor Agent’s own hook events. Running the `claude` CLI from Cursor’s terminal still uses the guard.
+
 To remove the guard, run `claude-geo-guard uninstall`.
 
 ## How the guard works

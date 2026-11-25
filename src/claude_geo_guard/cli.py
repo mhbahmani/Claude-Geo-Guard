@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import subprocess
 import sys
 
@@ -85,14 +86,38 @@ def parser():
     return root
 
 
+def _cursor_hook_response():
+    # Claude launched inside Cursor can inherit editor variables. Only Cursor's
+    # own hook envelope carries its version at the top level of the JSON input.
+    version = os.environ.get("CURSOR_VERSION")
+    if not version or sys.stdin.isatty():
+        return None
+    try:
+        event = json.load(sys.stdin)
+    except (OSError, ValueError, RecursionError):
+        return None
+    if not isinstance(event, dict) or event.get("cursor_version") != version:
+        return None
+    if event.get("hook_event_name") == "beforeSubmitPrompt":
+        return {"continue": True}
+    if event.get("hook_event_name") == "preToolUse":
+        return {"permission": "allow"}
+    return None
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
     paths = Paths.current()
     try:
         backend("environment")
         if args.command in {"check", "hook"}:
-            if args.command == "hook" and not config.load(paths)["enabled"]:
-                return 0
+            if args.command == "hook":
+                response = _cursor_hook_response()
+                if response is not None:
+                    print(json.dumps(response))
+                    return 0
+                if not config.load(paths)["enabled"]:
+                    return 0
             verdict = check()
             if args.command == "check":
                 print(json.dumps(verdict.as_dict()))

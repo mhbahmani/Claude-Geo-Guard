@@ -227,3 +227,32 @@ elif '--error' in sys.argv:
         stdout, stderr = code.communicate(timeout=5)
         assert code.returncode == 2 and not stdout
         assert b"Checking your public IP and country" in stderr
+
+
+def test_imported_cursor_hooks_skip_only_cursor_events(environment, monkeypatch):
+    paths = environment["paths"]
+    installer.install(paths, installer.preflight(paths, skip_desktop=True))
+    guard = paths.bin / "claude-geo-guard"
+    monkeypatch.setenv("CURSOR_VERSION", "3.0.0")
+    monkeypatch.setenv("HTTPS_PROXY", "http://localhost:1")  # Guard would deny this environment.
+
+    def invoke(command, payload):
+        return subprocess.run(
+            [guard, command], input=json.dumps(payload), capture_output=True, text=True
+        )
+
+    for event, expected in (
+        ("beforeSubmitPrompt", {"continue": True}),
+        ("preToolUse", {"permission": "allow"}),
+    ):
+        cursor = invoke("hook", {"cursor_version": "3.0.0", "hook_event_name": event})
+        assert (cursor.returncode, json.loads(cursor.stdout), cursor.stderr) == (0, expected, "")
+
+    for payload in (
+        {"hook_event_name": "UserPromptSubmit", "prompt": '{"cursor_version":"3.0.0"}'},
+        {"hook_event_name": "PreToolUse", "tool_input": {"cursor_version": "3.0.0"}},
+        {"cursor_version": "different"},
+    ):
+        assert invoke("hook", payload).returncode == 2
+    for command in ("check", "code"):
+        assert invoke(command, {"cursor_version": "3.0.0"}).returncode == 2
