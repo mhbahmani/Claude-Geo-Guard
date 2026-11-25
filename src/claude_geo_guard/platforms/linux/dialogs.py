@@ -186,12 +186,13 @@ def describe(error, *, runtime=False):
             facts.append(("Country provider", "Claude edge traces (plus ifconfig.io in full mode)"))
     if runtime:
         heading = "Claude was closed by the guard"
+        next_step = "Run claude-geo-guard last-stop for the recorded reason, or open Show details."
         explanation = explanation.replace("stayed closed", "was closed")
         details = (
             f"Runtime protection stopped Claude\n\n{error}\n\n"
             + "\n".join(f"{label}: {value}" for label, value in facts)
-            + "\n\nView the closure log:\n"
-            "journalctl --user -u claude-geo-guard.service -n 50 --no-pager\n\n"
+            + "\n\nExplain the last closure:\nclaude-geo-guard last-stop\n\n"
+            "View monitor logs:\nclaude-geo-guard logs\n\n"
             "Check your current connection:\nclaude-geo-guard check"
         )
     else:

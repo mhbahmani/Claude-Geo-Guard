@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0
+
+- Add `last-stop` to summarize the latest recorded Linux monitor closure, including its time, reason, country evidence, and process count.
+- Link runtime error dialogs to `last-stop` and `logs`.
+- Remove the redundant `status` command; use `doctor --json` for machine-readable diagnostics. Legacy installer `--status` now opens doctor.
+- End installation with a short guide to `check`, `last-stop`, and `logs -f`.
+
 ## 0.9.0
 
 - Add `logs` for the Linux runtime monitor journal, with live following, time and line filters, and JSON output.

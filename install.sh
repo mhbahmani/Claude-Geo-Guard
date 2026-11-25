@@ -8,6 +8,7 @@ install_guard() {
             case "${1:-}" in
                 --check|--status)
                     cmd=${1#--}; shift
+                    if [ "$cmd" = status ]; then cmd=doctor; fi
                     root=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
                     if [ -f "$root/run.py" ]; then
                         exec python3 -IB "$root/run.py" "$cmd" "$@"
@@ -36,6 +37,8 @@ args = [arg for arg in args if arg != "--dev"]
 command = "install"
 if args[:1] in (["--check"], ["--status"]):
     command = args.pop(0)[2:]
+    if command == "status":
+        command = "doctor"
 if "--help" in args or "-h" in args:
     print("Source: latest published release by default; --dev selects master.", flush=True)
 

@@ -11,6 +11,7 @@ from . import (
     desktop_launcher,
     installer,
     install_prompts,
+    history,
     monitor,
     reports,
     shell,
@@ -31,7 +32,7 @@ Usage: claude-geo-guard <command> [options]
 Inspect
   check             Verify your current connection
   doctor            Diagnose installation and protection
-  status            Show the full status report as JSON
+  last-stop         Explain the last recorded monitor closure
   logs              Read runtime monitor logs
 
 Manage
@@ -113,7 +114,7 @@ def parser():
             "--json", action="store_true", help="print the full JSON report"
         )
     sub.add_parser("hook", help=argparse.SUPPRESS)
-    sub.add_parser("status")
+    sub.add_parser("last-stop", help="explain the last recorded monitor closure")
     sub.add_parser("enable", help="enable guard protection")
     sub.add_parser("disable", help="disable guard protection")
     install = sub.add_parser("install")
@@ -191,6 +192,13 @@ def _cursor_hook_response():
     return None
 
 
+def install_help():
+    print("\nUseful commands (open a new terminal):")
+    print("  claude-geo-guard check      Verify your connection")
+    print("  claude-geo-guard last-stop  Explain the last monitor closure (Linux)")
+    print("  claude-geo-guard logs -f    Follow monitor events (Linux)")
+
+
 def main(argv=None):
     root = parser()
     args = root.parse_args(argv)
@@ -204,6 +212,9 @@ def main(argv=None):
     try:
         if args.command == "logs":
             return show_logs(args)
+        if args.command == "last-stop":
+            print(history.report(history.last_stop()))
+            return 0
         backend("environment")
         if args.command in {"check", "hook"}:
             if args.command == "hook":
@@ -220,13 +231,9 @@ def main(argv=None):
             elif not verdict.allowed:
                 print(f"Claude Geo Guard denied: {verdict.reason}", file=sys.stderr)
             return 0 if verdict.allowed else 2
-        if args.command in {"status", "doctor"}:
+        if args.command == "doctor":
             report = diagnostics(paths)
-            print(
-                json.dumps(report, indent=2)
-                if args.command == "status" or args.json
-                else reports.doctor(report)
-            )
+            print(json.dumps(report, indent=2) if args.json else reports.doctor(report))
             return (
                 0
                 if report["healthy_configuration"] and report["country_verification"]["allowed"]
@@ -271,13 +278,12 @@ def main(argv=None):
             if interactive:
                 install_prompts.heading("Installation complete")
                 print(f"Backups: {paths.manifest.parent / 'backups'}")
-                print("Open a new terminal and run: claude-geo-guard doctor")
+                install_help()
                 return 0
             print("Installed; configuration checked. Real desktop/hook behavior NOT VERIFIED.")
             print(installer.LIMITATION)
-            print(
-                f"Backups: {paths.manifest.parent / 'backups'}; open a new shell; run claude-geo-guard doctor"
-            )
+            print(f"Backups: {paths.manifest.parent / 'backups'}")
+            install_help()
         elif args.command in {"enable", "disable"}:
             enabled = args.command == "enable"
             installer.set_enabled(paths, enabled)

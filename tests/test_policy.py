@@ -139,7 +139,7 @@ def test_cli_hooks_desktop_and_monitor_use_updated_policy(environment, monkeypat
         [guard, "desktop", "--", str(environment["desktop"]), "0"],
     ):
         assert subprocess.run(args, capture_output=True).returncode == 0
-    report = subprocess.run([guard, "status"], capture_output=True, text=True)
+    report = subprocess.run([guard, "doctor", "--json"], capture_output=True, text=True)
     assert report.returncode == 0, report.stdout + report.stderr
     assert json.loads(report.stdout)["allowed_country"] == "DE"
     process = Process(42, 100, 1, str(environment["desktop"]))

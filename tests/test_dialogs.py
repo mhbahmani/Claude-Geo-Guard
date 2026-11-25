@@ -197,7 +197,7 @@ def test_runtime_message_explains_closure_and_points_to_log():
     assert "was closed" in message.explanation
     assert "stayed closed" not in message.plain()
     assert "curl exit 28" in message.details
-    assert "journalctl --user" in message.details
+    assert "claude-geo-guard last-stop" in message.details
     assert ("Detected country / IP", "Not verified · IP not returned") in message.facts
 
 

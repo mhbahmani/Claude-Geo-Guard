@@ -31,11 +31,14 @@ Run `claude-geo-guard check` for a connection report or `claude-geo-guard doctor
 Run `claude-geo-guard` without arguments for the command guide. On Linux, inspect the runtime monitor journal with:
 
 ```sh
+claude-geo-guard last-stop               # Explain the last recorded closure
 claude-geo-guard logs                    # Latest 100 entries
 claude-geo-guard logs -f                 # Follow live; Ctrl-C exits
 claude-geo-guard logs -n 200 --since today
 claude-geo-guard logs --json --no-pager  # Journal JSON for scripts
 ```
+
+`last-stop` reads retained Linux journal records; it does not run a new connection check. It shows when the monitor requested termination, why, and the country evidence recorded at that time. It does not cover application crashes or manual exits. Use `check` for your connection now, `doctor` for installation diagnostics, and `doctor --json` for the former `status` output.
 
 To remove the guard, run `claude-geo-guard uninstall`.
 
