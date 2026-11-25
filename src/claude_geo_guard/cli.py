@@ -25,6 +25,7 @@ def parser():
     root = argparse.ArgumentParser(description="Claude Geo Guard — best-effort checkpoints")
     root.add_argument("--version", action="version", version=__version__)
     sub = root.add_subparsers(dest="command", required=True)
+    sub.add_parser("version", help="show the Claude Geo Guard version")
     for name in ("check", "doctor"):
         sub.add_parser(name).add_argument(
             "--json", action="store_true", help="print the full JSON report"
@@ -110,6 +111,9 @@ def _cursor_hook_response():
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.command == "version":
+        print(__version__)
+        return 0
     paths = Paths.current()
     try:
         backend("environment")
