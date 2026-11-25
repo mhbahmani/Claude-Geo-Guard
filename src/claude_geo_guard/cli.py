@@ -12,6 +12,7 @@ from . import (
     installer,
     install_prompts,
     monitor,
+    reports,
     shell,
 )
 from .checker import check
@@ -24,10 +25,12 @@ def parser():
     root = argparse.ArgumentParser(description="Claude Geo Guard — best-effort checkpoints")
     root.add_argument("--version", action="version", version=__version__)
     sub = root.add_subparsers(dest="command", required=True)
-    sub.add_parser("check")
+    for name in ("check", "doctor"):
+        sub.add_parser(name).add_argument(
+            "--json", action="store_true", help="print the full JSON report"
+        )
     sub.add_parser("hook", help=argparse.SUPPRESS)
     sub.add_parser("status")
-    sub.add_parser("doctor")
     sub.add_parser("enable", help="enable guard protection")
     sub.add_parser("disable", help="disable guard protection")
     install = sub.add_parser("install")
@@ -120,13 +123,18 @@ def main(argv=None):
                     return 0
             verdict = check()
             if args.command == "check":
-                print(json.dumps(verdict.as_dict()))
+                result = verdict.as_dict()
+                print(json.dumps(result) if args.json else reports.connection(result))
             elif not verdict.allowed:
                 print(f"Claude Geo Guard denied: {verdict.reason}", file=sys.stderr)
             return 0 if verdict.allowed else 2
         if args.command in {"status", "doctor"}:
             report = diagnostics(paths)
-            print(json.dumps(report, indent=2))
+            print(
+                json.dumps(report, indent=2)
+                if args.command == "status" or args.json
+                else reports.doctor(report)
+            )
             return (
                 0
                 if report["healthy_configuration"] and report["country_verification"]["allowed"]

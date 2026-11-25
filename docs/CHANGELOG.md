@@ -2,6 +2,8 @@
 
 ## 0.7.3
 
+- `check` and `doctor` now print human-readable terminal reports. Pass `--json` for the original structured output.
+
 - Cursor Agent can import the guard hook and submit prompts or use tools without a geo-check. Claude Code still checks its own hooks when launched from Cursor’s terminal, and Claude Desktop retains its launch and runtime checks.
 
 ## 0.7.2

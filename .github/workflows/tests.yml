@@ -90,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python3 -I run.py check > verdict.json
+          python3 -I run.py check --json > verdict.json
           result=$?
           set -e
           python3 - "$result" <<'PY'

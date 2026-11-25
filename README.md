@@ -26,6 +26,8 @@ With protection enabled, the Desktop launcher shows a progress window while chec
 
 Cursor can import Claude Code hooks. The guard silently skips Cursor Agent’s own hook events. Running the `claude` CLI from Cursor’s terminal still uses the guard.
 
+Run `claude-geo-guard check` for a connection report or `claude-geo-guard doctor` to diagnose the installation. Add `--json` to either command for scripts.
+
 To remove the guard, run `claude-geo-guard uninstall`.
 
 ## How the guard works

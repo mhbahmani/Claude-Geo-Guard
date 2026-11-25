@@ -77,7 +77,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 2
     (environment["bins"] / "FAKE_COUNTRY").write_text("GB")
     assert subprocess.run([str(guard), "hook"], capture_output=True).returncode == 0
-    report = subprocess.run([str(guard), "doctor"], capture_output=True, text=True)
+    report = subprocess.run([str(guard), "doctor", "--json"], capture_output=True, text=True)
     assert report.returncode == 0, report.stdout + report.stderr
     assert json.loads(report.stdout)["hooks_registered"]
     helper.write_text(
@@ -256,3 +256,28 @@ def test_imported_cursor_hooks_skip_only_cursor_events(environment, monkeypatch)
         assert invoke("hook", payload).returncode == 2
     for command in ("check", "code"):
         assert invoke(command, {"cursor_version": "3.0.0"}).returncode == 2
+
+
+def test_terminal_reports_and_json(environment):
+    paths = environment["paths"]
+    installer.install(paths, installer.preflight(paths))
+    guard = paths.bin / "claude-geo-guard"
+    check = subprocess.run([guard, "check"], capture_output=True, text=True, check=True)
+    assert "Connection check passed" in check.stdout
+    for field in ("Destination", "claude.ai", "IPv4", "GB", "1.1.1.1"):
+        assert field in check.stdout
+    (environment["bins"] / "FAKE_COUNTRY").write_text("FR")
+    denied = subprocess.run([guard, "check", "--json"], capture_output=True, text=True)
+    assert denied.returncode == 2
+    assert json.loads(denied.stdout)["observations"]["claude.ai"]["4"]["country"] == "FR"
+    doctor = subprocess.run([guard, "doctor"], capture_output=True, text=True)
+    assert doctor.returncode == 2
+    for field in (
+        "needs attention",
+        "Issues",
+        "PATH bypasses wrapper",
+        "Connection check failed",
+        "FR",
+        str(paths.guard_config),
+    ):
+        assert field in doctor.stdout

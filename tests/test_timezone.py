@@ -192,7 +192,7 @@ else:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == expected
     monkeypatch.setenv("PATH", f"{paths.bin}:{os.environ['PATH']}")
-    status = subprocess.run([guard, "doctor"], capture_output=True, text=True)
+    status = subprocess.run([guard, "doctor", "--json"], capture_output=True, text=True)
     assert status.returncode == 0, status.stdout + status.stderr
     assert json.loads(status.stdout)["timezone"] == "Europe/London"
     changed = subprocess.run([guard, "set-timezone", "Asia/Tehran"], capture_output=True, text=True)
