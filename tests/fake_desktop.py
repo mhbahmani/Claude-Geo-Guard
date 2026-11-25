@@ -49,7 +49,10 @@ elif TYPE == "renderer":
     beats = 0
     while True:
         beats += 1
-        (STATE / "heartbeat").write_text(str(beats))
+        # Readers must see a complete beat, never the empty file between truncate and write.
+        pending = STATE / "heartbeat.tmp"
+        pending.write_text(str(beats))
+        pending.replace(STATE / "heartbeat")
         time.sleep(0.02)
 elif TYPE == "gpu-process":
     while True:
