@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import pty
 from pathlib import Path
 import subprocess
 import sys
@@ -9,8 +10,8 @@ import tarfile
 import pytest
 
 
-@pytest.mark.parametrize("dev", [True, False])
-def test_piped_install_from_empty_directory(tmp_path, monkeypatch, dev):
+@pytest.mark.parametrize("dev,terminal", [(True, False), (False, False), (True, True)])
+def test_piped_install_from_empty_directory(tmp_path, monkeypatch, dev, terminal):
     script = (Path(__file__).resolve().parents[1] / "install.sh").read_bytes()
     work = tmp_path / "empty"
     work.mkdir()
@@ -32,6 +33,11 @@ def test_piped_install_from_empty_directory(tmp_path, monkeypatch, dev):
         + sys.executable
         + "\n"
         + """import sys,os,shutil
+if '--output' in sys.argv:
+    assert '--silent' in sys.argv and '--progress-bar' not in sys.argv
+    if sys.stderr.isatty():
+        import time
+        time.sleep(1.65)
 with open(os.environ['URLS'],'a') as out: print(sys.argv[-1],file=out)
 if '--output' in sys.argv: shutil.copyfile(os.environ['ARCHIVE'],sys.argv[sys.argv.index('--output')+1])
 else: print('{"tag_name":"v0.2.0"}')
@@ -40,16 +46,27 @@ else: print('{"tag_name":"v0.2.0"}')
     curl.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path) + ":" + os.environ["PATH"])
     args = ["--yes", "--country", "DE"]
-    result = subprocess.run(
-        ["sh", "-s", "--", *args, *(["--dev"] if dev else [])],
-        cwd=work,
-        input=script,
-        capture_output=True,
-        check=True,
-    )
+    master, slave = pty.openpty()
+    try:
+        result = subprocess.run(
+            ["sh", "-s", "--", *args, *(["--dev"] if dev else [])],
+            cwd=work,
+            input=script,
+            stdout=subprocess.PIPE,
+            stderr=slave if terminal else subprocess.PIPE,
+            check=True,
+        )
+        output = os.read(master, 8192) if terminal else result.stderr
+    finally:
+        os.close(slave)
+        os.close(master)
     assert json.loads(result.stdout) == ["install", *args]
     version = "master" if dev else "v0.2.0"
-    messages = result.stderr.decode().splitlines()
+    if terminal:
+        assert b"GitHub..." + b"\b \b" * 3 + b"." in output
+    else:
+        assert b"\b" not in output
+    messages = output.decode().splitlines()
     if not dev:
         assert "Looking up the latest" in messages[0]
     assert f"Downloading Claude Geo Guard {version} from GitHub" in messages[-2]

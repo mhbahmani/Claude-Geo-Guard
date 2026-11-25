@@ -42,6 +42,33 @@ if "--help" in args or "-h" in args:
 curl = ["curl", "-q", "--fail", "--show-error", "--location",
         "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "10", "--max-time", "90"]
 
+def download(url, archive, version):
+    label = f"Downloading Claude Geo Guard {version} from GitHub"
+    command = [*curl, "--silent", "--max-filesize", "16777216", "--output", str(archive), url]
+    if not sys.stderr.isatty():
+        print(label + "…", file=sys.stderr, flush=True)
+        subprocess.run(command, check=True)
+        return
+
+    print(label, end="", file=sys.stderr, flush=True)
+    try:
+        with subprocess.Popen(command) as transfer:
+            dots = 0
+            while True:
+                try:
+                    if transfer.wait(timeout=0.3):
+                        raise subprocess.CalledProcessError(transfer.returncode, command)
+                    break
+                except subprocess.TimeoutExpired:
+                    if dots == 3:
+                        print("\b \b" * 3, end="", file=sys.stderr, flush=True)
+                        dots = 0
+                    else:
+                        print(".", end="", file=sys.stderr, flush=True)
+                        dots += 1
+    finally:
+        print(file=sys.stderr, flush=True)
+
 def install(work):
     if dev:
         version = "master"
@@ -53,10 +80,7 @@ def install(work):
         version = json.loads(result)["tag_name"]
         ref = "tags/" + quote(version, safe="")
     archive = work / "source.tar.gz"
-    print(f"Downloading Claude Geo Guard {version} from GitHub…", file=sys.stderr, flush=True)
-    progress = "--progress-bar" if sys.stderr.isatty() else "--silent"
-    subprocess.run([*curl, progress, "--max-filesize", "16777216", "--output", str(archive),
-                    f"https://codeload.github.com/{repo}/tar.gz/refs/{ref}"], check=True)
+    download(f"https://codeload.github.com/{repo}/tar.gz/refs/{ref}", archive, version)
     print("Download complete. Unpacking the source archive…", file=sys.stderr, flush=True)
     # Only copy the Python entry point and package. Never extract links or special files.
     seen = set()

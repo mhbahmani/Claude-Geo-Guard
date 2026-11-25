@@ -3,7 +3,7 @@
 ## 0.7.4
 
 - Run `claude-geo-guard version` to print the installed version.
-- The installer names the GitHub release or branch it downloads and shows a progress bar in interactive terminals. Redirected logs get short status messages.
+- The installer names the GitHub release or branch it downloads and shows cycling dots in interactive terminals. Redirected logs get short status messages.
 
 ## 0.7.3
 
