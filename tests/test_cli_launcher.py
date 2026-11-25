@@ -90,3 +90,33 @@ def test_deny_never_executes(environment, monkeypatch):
 def test_missing_binary(tmp_path):
     with pytest.raises(ValueError):
         cl.discover(tmp_path, path="/definitely/missing")
+
+
+def test_interactive_progress_stays_in_terminal(monkeypatch):
+    import io
+    import sys
+    import threading
+
+    from claude_geo_guard import launch_progress
+
+    cycled = threading.Event()
+
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+        def write(self, text):
+            result = super().write(text)
+            if text.startswith("\r") and text.endswith("   "):
+                cycled.set()
+            return result
+
+    terminal = Terminal()
+    monkeypatch.setattr(sys, "stderr", terminal)
+    monkeypatch.setattr(launch_progress, "backend", Mock(side_effect=AssertionError))
+    with launch_progress.terminal_progress():
+        assert cycled.wait(timeout=5)
+    frames = terminal.getvalue().rstrip("\n").split("\r")
+    label = launch_progress.MESSAGE.removesuffix("…")
+    assert frames[:5] == [label, label + ".  ", label + ".. ", label + "...", label + "   "]
+    assert terminal.getvalue().endswith("\n")

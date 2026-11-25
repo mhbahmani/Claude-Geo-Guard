@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+import threading
 from contextlib import contextmanager
 
 from .platforms import backend
@@ -10,14 +11,36 @@ MESSAGE = "Checking your public IP and country before opening Claude…"
 
 
 @contextmanager
-def verifying(*, terminal=False):
-    if terminal:
-        print(MESSAGE, file=sys.stderr, flush=True)
-    command = (
-        backend("dialogs").progress_command(MESSAGE)
-        if not terminal or (sys.stdin.isatty() and sys.stderr.isatty())
-        else None
-    )
+def terminal_progress():
+    stream = sys.stderr
+    if not stream.isatty():
+        print(MESSAGE, file=stream, flush=True)
+        yield
+        return
+
+    label = MESSAGE.removesuffix("…")
+    print(label, end="", file=stream, flush=True)
+    stop = threading.Event()
+
+    def animate():
+        dots = 1
+        while not stop.wait(0.3):
+            print(f"\r{label}{'.' * dots:<3}", end="", file=stream, flush=True)
+            dots = (dots + 1) % 4
+
+    worker = threading.Thread(target=animate, daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        worker.join()
+        print(file=stream, flush=True)
+
+
+@contextmanager
+def verifying():
+    command = backend("dialogs").progress_command(MESSAGE)
     window = None
     if command:
         try:

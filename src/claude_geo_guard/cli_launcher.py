@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import config
 from .checker import check
-from .launch_progress import verifying
+from .launch_progress import terminal_progress
 from .timezone import launch_environment
 
 MIN_VERSION = (2, 1, 295)
@@ -78,7 +78,7 @@ def launch(paths, args, explicit=None):
     if not config.load(paths)["enabled"]:
         print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
         return os.execve(str(binary), [str(binary), *args], os.environ)
-    with verifying(terminal=True):
+    with terminal_progress():
         verdict = check()
         if not verdict.allowed:
             raise ValueError(verdict.reason)
