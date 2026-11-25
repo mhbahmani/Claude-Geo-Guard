@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0
+
+- Claude Code hooks no longer block prompts or tools when the connection only could not be verified, for example on a slow network. They block only on a confirmed country, IP or policy failure, matching the monitor.
+- A blocked tool call now ends Claude's turn and shows the reason to you only. Before, the reason was returned to Claude as a tool error and became part of the conversation. A blocked prompt is not sent, and its reason is also shown only to you.
+- Hooks reuse the monitor's latest verdict instead of checking the network on every prompt and tool call. A fresh verdict is answered by the installed shell wrapper in a few milliseconds without starting Python. When it is stale, parallel tool calls wait for a single shared check. A routing change, policy edit or `/etc/hosts` change discards it at once. Rerun the installer to update the wrapper.
+- A request that times out is retried once with more time to connect, so a slow but working network passes. When one Claude endpoint verifies the allowed country and the other only times out, the check passes.
+- The offline notification no longer says that Claude will be closed. Set `offline_notifications` to `false` in config.json to turn off the offline and "verified again" notifications; Claude is never blocked in offline mode. Pause notifications are unaffected.
+- The README lists every config.json setting and when a change takes effect.
+
 ## 0.12.0
 
 - On Linux, a country or IP mismatch, or another hard failure, now pauses Claude Desktop instead of closing it. Its network service, embedded Claude Code and helpers stop at once, while the window stays usable for scrolling and reading. A notification explains the pause. Claude resumes after the next passing check, which a routing change such as disconnecting a VPN triggers immediately. If the window opens a connection itself, it is paused too.
