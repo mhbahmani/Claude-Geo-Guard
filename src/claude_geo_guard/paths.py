@@ -14,6 +14,8 @@ class Paths:
     state: Path
     # Set by the installed bootstrap: the caller's environment no longer selects files.
     installed: bool = False
+    # Per-user tmpfs for frequently rewritten, disposable state.
+    runtime: Path | None = None
 
     @classmethod
     def current(cls):
@@ -28,17 +30,26 @@ class Paths:
             value = Path(os.environ.get(name) or fallback)
             return value if value.is_absolute() else Path(fallback)
 
+        runtime = os.environ.get("XDG_RUNTIME_DIR")
         return cls(
             home,
             xdg("XDG_DATA_HOME", home / ".local/share"),
             xdg("XDG_CONFIG_HOME", home / ".config"),
             xdg("XDG_STATE_HOME", home / ".local/state"),
+            runtime=Path(runtime) if runtime and Path(runtime).is_absolute() else None,
         )
 
     @classmethod
-    def pin(cls, home, data, config, state):
+    def pin(cls, home, data, config, state, runtime=None):
         global _installed
-        _installed = cls(Path(home), Path(data), Path(config), Path(state), installed=True)
+        _installed = cls(
+            Path(home),
+            Path(data),
+            Path(config),
+            Path(state),
+            installed=True,
+            runtime=Path(runtime) if runtime else None,
+        )
         return _installed
 
     @property
@@ -69,3 +80,9 @@ class Paths:
     @property
     def monitor_health(self):
         return self.manifest.parent / "monitor-health.json"
+
+    @property
+    def verdict(self):
+        if self.runtime is None:
+            return self.manifest.parent / "verdict"
+        return self.runtime / "claude-geo-guard/verdict"

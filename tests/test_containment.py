@@ -21,6 +21,8 @@ from claude_geo_guard.quarantine import ESCALATED_MESSAGE, Quarantine
 
 FAKE = Path(__file__).with_name("fake_desktop.py")
 SYSTEMD_RUN = shutil.which("systemd-run")
+# Read before the isolation fixture replaces it; the user manager's bus lives there.
+BUS = {"XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")}
 MISMATCH = Verdict(False, "egress outside configured country GB", {4: "FR"}, "GB")
 ALLOWED = Verdict(True, "verified", {4: "GB"}, "GB")
 
@@ -71,6 +73,7 @@ class FakeDesktop:
             self.unit = f"{containment.PREFIX}test{uuid.uuid4().hex[:8]}"
             command = [SYSTEMD_RUN, "--user", "--scope", "--quiet", "--collect"]
             command += [f"--unit={self.unit}", "--", str(self.desktop), "-I", str(FAKE)]
+            environ.update(BUS)
         self.main = subprocess.Popen(command, env=environ)
         seen, deadline = Counter(), time.monotonic() + 15
         while not ({"network", "code", "crashpad"} <= set(seen) and self.heartbeat()):
@@ -118,6 +121,7 @@ class FakeDesktop:
             subprocess.run(
                 ["systemctl", "--user", "kill", "--signal=SIGKILL", f"{self.unit}.scope"],
                 capture_output=True,
+                env={**os.environ, **BUS},
             )
         self.main.wait(timeout=5)
         self.receiver.close()

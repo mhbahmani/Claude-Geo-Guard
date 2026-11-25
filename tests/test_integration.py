@@ -287,10 +287,13 @@ def test_imported_cursor_hooks_skip_only_cursor_events(environment, monkeypatch)
 
     for payload in (
         {"hook_event_name": "UserPromptSubmit", "prompt": '{"cursor_version":"3.0.0"}'},
-        {"hook_event_name": "PreToolUse", "tool_input": {"cursor_version": "3.0.0"}},
         {"cursor_version": "different"},
     ):
         assert invoke("hook", payload).returncode == 2
+    tool = invoke(
+        "hook", {"hook_event_name": "PreToolUse", "tool_input": {"cursor_version": "3.0.0"}}
+    )
+    assert tool.returncode == 0 and json.loads(tool.stdout)["continue"] is False
     for command in ("check", "code"):
         assert invoke(command, {"cursor_version": "3.0.0"}).returncode == 2
 

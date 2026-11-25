@@ -19,7 +19,7 @@ ENDPOINT = "https://ifconfig.io/all.json"
 TRANSIENT_EXITS = {6, 7, 28, 35, 52, 55, 56}
 # Hooks time out after 30 seconds; a retry must fit inside this overall budget.
 DEADLINE_SECONDS = 20
-RETRY_SECONDS = 9
+RETRY_SECONDS = 11
 LOG = logging.getLogger("claude-geo-guard")
 TIMING_MARKER = "GUARD_TIMING:"
 TIMING_FIELDS = (
@@ -98,9 +98,12 @@ def _http_status(output):
     return None
 
 
-def query(family: int, host=None) -> Egress:
+def query(family: int, host=None, patient=False) -> Egress:
+    """patient: a retry after a timeout allows a slow but working network more time."""
     if host is not None and host not in TRACE_HOSTS:
         raise ValueError("unknown trace host")
+    connect = "6" if patient else ("3" if host is not None else "2")
+    limit = 9 if patient else 6
     try:
         result = subprocess.run(
             [
@@ -112,9 +115,9 @@ def query(family: int, host=None) -> Egress:
                 "--proto",
                 "=https",
                 "--connect-timeout",
-                "3" if host is not None else "2",
+                connect,
                 "--max-time",
-                "6",
+                str(limit),
                 "--max-filesize",
                 "4096",
                 "--fail",
@@ -137,7 +140,7 @@ def query(family: int, host=None) -> Egress:
             capture_output=True,
             env={"PATH": os.environ.get("PATH", os.defpath), "LC_ALL": "C"},
             stdin=subprocess.DEVNULL,
-            timeout=8,
+            timeout=limit + 2,
             check=True,
         )
     except subprocess.CalledProcessError as error:
@@ -166,7 +169,8 @@ def query(family: int, host=None) -> Egress:
         ) from None
     except subprocess.TimeoutExpired:
         raise ProviderFailure(
-            f"IPv{family}: verification command exceeded 8-second deadline", transient=True
+            f"IPv{family}: verification command exceeded {limit + 2}-second deadline",
+            transient=True,
         ) from None
     except OSError as error:
         raise ProviderFailure(
@@ -337,10 +341,10 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
             failure_transient.update(transient)
             return transient
 
-        def submit(pool, key):
+        def submit(pool, key, patient=False):
             family, host = key
             if request is None:
-                return pool.submit(query, family, host)
+                return pool.submit(query, family, host, patient)
             return pool.submit(request, family)
 
         with ThreadPoolExecutor(max_workers=6) as pool:
@@ -355,13 +359,26 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
                 and not mismatch
                 and time.monotonic() - started + RETRY_SECONDS <= DEADLINE_SECONDS
             ):
-                collect({key: submit(pool, key) for key in transient})
+                collect({key: submit(pool, key, True) for key in transient})
         for (family, _host), message in failures.items():
             errors[family] = errors[family] + "; " + message if family in errors else message
         mismatch = any(country != target for country in countries.values()) or bool(
             allowed_ips and any(ip not in allowed_ips for ip in ips.values())
         )
-        if errors:
+        verified = {
+            family
+            for provider, group in observations.items()
+            if request is not None or provider in TRACE_HOSTS
+            for family in group
+        }
+        # A provider that only timed out is no evidence against the others that answered.
+        partial = (
+            errors
+            and not mismatch
+            and all(failure_transient[key] for key in failures)
+            and set(before.families) <= verified
+        )
+        if errors and not partial:
             return verdict(
                 False,
                 "verification failed: " + "; ".join(errors.values()),
@@ -390,7 +407,8 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
         return verdict(
             True,
             f"all usable address families verified {target}"
-            + (" and allowed IPs" if allowed_ips else ""),
+            + (" and allowed IPs" if allowed_ips else "")
+            + (f" (unreachable: {'; '.join(errors.values())})" if partial else ""),
             fingerprint=before.fingerprint,
         )
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:

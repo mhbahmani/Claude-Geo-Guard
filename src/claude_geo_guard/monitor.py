@@ -5,7 +5,7 @@ import subprocess
 import threading
 import time
 
-from . import config, executables, health
+from . import config, executables, health, verdict_cache
 from .checker import Verdict, check
 from .desktop_launcher import LaunchBlocked
 from .platforms import backend
@@ -170,6 +170,7 @@ def tick(
     pauser=pause,
     resumer=resume,
     quarantine=None,
+    share=None,
 ):
     processes = scanner(binaries, previous)
     if not processes:
@@ -178,6 +179,8 @@ def tick(
     moved = connectivity is not None and connectivity.moved()
     if not (check_due or moved):
         return processes
+    if moved and share is not None:
+        share(None)  # Hooks must not reuse a verdict from the previous network.
     if moved and not (quarantine is not None and quarantine.active):
         # Claude must not talk over an unchecked network while verification runs.
         paused = pauser(processes, binaries)
@@ -196,6 +199,7 @@ def tick(
             paths,
             connectivity,
             quarantine,
+            share,
         )
     finally:
         resumer(paused)
@@ -214,10 +218,13 @@ def _decide(
     paths,
     connectivity,
     quarantine,
+    share=None,
 ):
     verdict = checker()
     if paused:
         verdict = _confirm_while_paused(verdict, checker, stop)
+    if share is not None:
+        share(verdict)
     LOG.info(
         json.dumps(
             {
@@ -396,6 +403,21 @@ def _announcer():
     return announce
 
 
+def _sharer(paths, interval):
+    """Publishes each verdict to hooks until the next check is due."""
+
+    def share(verdict):
+        try:
+            if verdict is None:
+                verdict_cache.clear(paths)
+            else:
+                verdict_cache.store(paths, verdict, interval + verdict_cache.MONITOR_SLACK_SECONDS)
+        except OSError as error:
+            _log("verdict_unwritable", logging.WARNING, error_type=type(error).__name__)
+
+    return share
+
+
 def _rest(wake, seconds, quarantine):
     """Sleep until the next check; while paused, keep the pause complete in between."""
     if quarantine is None or not quarantine.active:
@@ -480,6 +502,7 @@ def run(paths, interval=None, grace=None, pause_limit=None):
                     connectivity=connectivity,
                     check_due=not network_event,
                     quarantine=quarantine,
+                    share=_sharer(paths, cycle_interval),
                 )
                 if quarantine is not None and quarantine.expired():
                     quarantine.close(alerts)
@@ -495,6 +518,7 @@ def run(paths, interval=None, grace=None, pause_limit=None):
         if quarantine is not None:
             # A stopped monitor no longer protects anything; frozen apps must not stay stuck.
             quarantine.release("monitor stopped", announce=False)
+        verdict_cache.clear(paths)
         routes.close()
         health.withdraw(paths)
         alerts.close()

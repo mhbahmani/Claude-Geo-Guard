@@ -1,6 +1,8 @@
 import argparse
 import json
+import logging
 import os
+import select
 import subprocess
 import sys
 
@@ -15,6 +17,7 @@ from . import (
     monitor,
     reports,
     shell,
+    verdict_cache,
 )
 from .checker import check
 from .platforms import backend
@@ -178,17 +181,21 @@ def parser():
     return root
 
 
-def _cursor_hook_response():
+def _hook_input():
+    try:
+        if sys.stdin.isatty() or not select.select([sys.stdin], [], [], 1)[0]:
+            return None
+        event = json.load(sys.stdin)
+    except (AttributeError, OSError, TypeError, ValueError, RecursionError):
+        return None
+    return event if isinstance(event, dict) else None
+
+
+def _cursor_hook_response(event):
     # Claude launched inside Cursor can inherit editor variables. Only Cursor's
     # own hook envelope carries its version at the top level of the JSON input.
     version = os.environ.get("CURSOR_VERSION")
-    if not version or sys.stdin.isatty():
-        return None
-    try:
-        event = json.load(sys.stdin)
-    except (OSError, ValueError, RecursionError):
-        return None
-    if not isinstance(event, dict) or event.get("cursor_version") != version:
+    if not version or event is None or event.get("cursor_version") != version:
         return None
     if event.get("hook_event_name") == "beforeSubmitPrompt":
         return {"continue": True}
@@ -221,25 +228,33 @@ def main(argv=None):
             print(history.report(history.last_stop()))
             return 0
         backend("environment")
-        if args.command in {"check", "hook"}:
-            if args.command == "hook":
-                response = _cursor_hook_response()
-                if response is not None:
-                    print(json.dumps(response))
-                    return 0
-                if not config.load(paths)["enabled"]:
-                    return 0
+        if args.command == "hook":
+            event = _hook_input() if os.environ.get("CURSOR_VERSION") else None
+            response = _cursor_hook_response(event)
+            if response is not None:
+                print(json.dumps(response))
+                return 0
+            if not config.load(paths)["enabled"]:
+                return 0
+            logging.getLogger("claude-geo-guard").addHandler(logging.NullHandler())
+            # An unverifiable network carries no evidence of a mismatch: never block on it.
+            kind, message = verdict_cache.current(paths, check)
+            if kind != "deny":
+                return 0
+            if event is None:
+                event = _hook_input()
+            if event is not None and event.get("hook_event_name") == "PreToolUse":
+                # Ends the turn. Unlike a tool denial, the reason is shown to the
+                # user only and never becomes part of the conversation.
+                print(json.dumps({"continue": False, "stopReason": message}))
+                return 0
+            # Prompt hooks block the message and show this only to the user.
+            print(message, file=sys.stderr)
+            return 2
+        if args.command == "check":
             verdict = check()
-            if args.command == "check":
-                result = verdict.as_dict()
-                print(json.dumps(result) if args.json else reports.connection(result))
-            elif verdict.transient:
-                print(
-                    f"Claude Geo Guard cannot verify the connection (offline or unreachable): {verdict.reason}",
-                    file=sys.stderr,
-                )
-            elif not verdict.allowed:
-                print(f"Claude Geo Guard denied: {verdict.reason}", file=sys.stderr)
+            result = verdict.as_dict()
+            print(json.dumps(result) if args.json else reports.connection(result))
             return 0 if verdict.allowed else 2
         if args.command == "doctor":
             report = diagnostics(paths)

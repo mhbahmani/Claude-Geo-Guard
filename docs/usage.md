@@ -92,7 +92,9 @@ The private `claude` wrapper preserves argument boundaries and uses `exec` to pr
 
 Without this option the original is rediscovered on each launch, supporting normal updates. An explicit path is retained until changed by reinstalling. Aliases/functions and shell command caches can override PATH: inspect `type -a claude`, open a new terminal, and run `hash -r` (Bash) or `rehash` (Zsh) when necessary.
 
-Three groups are appended to `~/.claude/settings.json`: `UserPromptSubmit`, `UserPromptExpansion`, and `PreToolUse` (matcher `*`). Each uses exec form with explicit arguments, a 30-second timeout, `onFailure: "block"`, and an identifiable status message. A successful hook produces no stdout; a denied hook returns `2` with an explanation on stderr. Errors and timeouts require Code's documented fail-closed handling. Existing groups and handlers retain their order, and unrelated settings retain their values. Invalid/ambiguous JSON and conflicting guard edits abort safely.
+Three groups are appended to `~/.claude/settings.json`: `UserPromptSubmit`, `UserPromptExpansion`, and `PreToolUse` (matcher `*`). Each uses exec form with explicit arguments, a 30-second timeout, `onFailure: "block"`, and an identifiable status message. A successful hook produces no output. Hooks block only on a confirmed country, IP or policy failure; a connection that cannot be verified, for example on a slow network, is allowed, as in the monitor. A blocked prompt returns `2`, so it is not sent, and the explanation on stderr is shown only to you. A blocked tool call ends Claude's turn with a stop reason that is shown only to you, so the reason never becomes part of the conversation.
+
+Hooks share one verdict, stored in `$XDG_RUNTIME_DIR/claude-geo-guard/verdict` (a memory-backed directory; the state directory when it is unset). The monitor updates it after every check, and it stays valid for one monitor interval plus a 20-second check allowance; hook-only verdicts last 15 seconds. Policy and `/etc/hosts` edits invalidate the entry when used. The monitor clears it when it observes a routing change and when it stops; detection can race a hook. While a fresh verdict allows access, the installed shell wrapper answers in a few milliseconds without starting Python or using the network. Otherwise one hook runs the check while parallel hooks wait for its result, which stays valid for 15 seconds. A denial is never reused: the next prompt checks again, so you can continue as soon as the connection is fixed. A proxy environment always reaches the full hook, which denies it. Errors and timeouts require Code's documented fail-closed handling. Existing groups and handlers retain their order, and unrelated settings retain their values. Invalid/ambiguous JSON and conflicting guard edits abort safely.
 
 Anthropic documents that local Desktop Code sessions share these settings and hooks. This installer checks the **standalone CLI's** version, not Desktop's bundled engine. Verify all three events and failure handling in an actual local Desktop session before relying on them. Managed settings, project restrictions, disabled hooks, different config directories, or engine changes can prevent execution. `CLAUDE_CONFIG_DIR` overrides are rejected by installation. Remote sessions run on another execution host: even when hooks are installed there, they check **that host's** egress, not your laptop's. This version does not configure remote hosts.
 
@@ -108,7 +110,8 @@ Your editable settings live in **`~/.config/claude-geo-guard/config.json`**, or 
   "grace": 5,
   "enabled": true,
   "allowed_ips": [],
-  "success_notifications": true
+  "success_notifications": true,
+  "offline_notifications": true
 }
 ```
 
@@ -121,6 +124,8 @@ Your editable settings live in **`~/.config/claude-geo-guard/config.json`**, or 
 | `enabled` | Defaults to `true`. Set to `false` to skip automatic launch checks, timezone overrides, hook checks and runtime monitoring. |
 | `allowed_ips` | Optional array of exact IPv4/IPv6 addresses. Omitted or `[]` disables IP matching; country checking remains required. |
 | `success_notifications` | Optional boolean; `true` (default) confirms guarded Desktop launches, `false` disables success confirmations. |
+| `offline_notifications` | Optional boolean; `true` (default) notifies when the monitor enters offline mode and when the connection is verified again. Offline mode never blocks Claude, so `false` only silences these notices; the journal still records `offline_mode` and `connection_restored`. Pause notices are not affected. |
+| `split_tunnel` | Optional boolean; `false` (default). `true` skips the ifconfig.io probe and checks only the Claude endpoints. |
 
 Use `claude-geo-guard disable` and `claude-geo-guard enable` to change protection after installation. For an unattended install with protection off, use `./install.sh --yes --disabled`. The CLI wrapper and Desktop launcher show the enable command whenever they open Claude with protection disabled. Manual diagnostics still perform a live check.
 
@@ -218,7 +223,7 @@ IPv4 and IPv6 are checked independently; **every usable family must return the c
 
 With the default GB policy, a routed UK VPN may satisfy the policy, including when the user is physically elsewhere. The provider observes public egress, not physical location. Geolocation can be wrong or delayed. Destination/UID/port-specific VPN routing can make Claude use a different egress from the provider or route probes. See [security model](security-model.md).
 
-Nonempty HTTP(S)/ALL proxy variables cause denial because family-specific verification through a proxy would be ambiguous. Curl proxying and `.curlrc` are disabled for the request; normal certificate validation stays enabled. Application-internal proxies cannot be detected reliably. Requests require HTTP 200 and an ISO country code. Connection timeout is 2 seconds, HTTPS total timeout 6 seconds per family, with an 8-second subprocess watchdog; families are queried concurrently. Each route command has a 1-second timeout. Hook timeout is 30 seconds. Network failures close Desktop on the next completed check, including during outages and provider rate limiting.
+Nonempty HTTP(S)/ALL proxy variables cause denial because family-specific verification through a proxy would be ambiguous. Curl proxying and `.curlrc` are disabled for the request; normal certificate validation stays enabled. Application-internal proxies cannot be detected reliably. Requests require HTTP 200 and an ISO country code. Connection timeout is 3 seconds for Claude endpoints and 2 seconds for ifconfig.io, HTTPS total timeout 6 seconds per family, with an 8-second subprocess watchdog; families and endpoints are queried concurrently. A request that only timed out or failed to connect is retried once with a 6-second connection timeout and a 9-second total. If one endpoint then verifies the allowed country for every family and the others only timed out, the check passes. Each route command has a 1-second timeout. Hook timeout is 30 seconds. Outages and provider rate limiting leave running Claude open (offline mode); only a confirmed mismatch or hard failure stops it.
 
 ## Updating and uninstalling
 

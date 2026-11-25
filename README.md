@@ -42,6 +42,24 @@ claude-geo-guard logs --json --no-pager  # Journal JSON for scripts
 
 To remove the guard, run `claude-geo-guard uninstall`.
 
+## Configuration
+
+Settings live in `~/.config/claude-geo-guard/config.json` (`$XDG_CONFIG_HOME/claude-geo-guard/config.json` when set; `~/Library/Application Support/claude-geo-guard/config.json` on macOS). Edit it with any text editor and save valid JSON. Reinstalling keeps your values. The monitor rereads the file at every check, so no service restart is needed. The last column says what has to happen before a change applies.
+
+| Key | Default | Meaning | Applies |
+|---|---|---|---|
+| `enabled` | `true` | Turns protection on or off. Prefer `claude-geo-guard enable` / `disable`. | Next launch, hook or monitor cycle |
+| `allowed_country` | `"GB"` | ISO country code every check must report. Or run `claude-geo-guard set-country CODE`. | Next check |
+| `allowed_ips` | `[]` | Exact public IPv4/IPv6 addresses that must also match; `[]` disables IP matching. | Next check |
+| `split_tunnel` | `false` | Skips the ifconfig.io probe and checks only the Claude endpoints. | Next check |
+| `timezone` | `null` | IANA timezone such as `"Europe/London"` for Claude processes; `null` keeps the system timezone. Or run `claude-geo-guard set-timezone ZONE`. | Quit and reopen Claude Desktop; start a new `claude` session |
+| `interval` | `15` | Seconds between monitor checks, 5 to 300. | After the current wait |
+| `grace` | `5` | macOS only: seconds between a graceful and a forced close, 0 to 30. | Next closure |
+| `success_notifications` | `true` | Shows a "connection verified" popup when a guarded Desktop launch passes. | Next Desktop launch |
+| `offline_notifications` | `true` | Shows a notification when the connection cannot be verified and again when it is verified. Claude keeps working either way. | Next check |
+
+The required keys are `allowed_country`, `timezone`, `interval` and `grace`. An invalid file counts as a failed check until you fix it: launches are blocked and the monitor stops running Claude. `claude-geo-guard doctor` names the problem. A manually started monitor (`claude-geo-guard monitor --interval N`) uses its flags instead of the file; on Linux, `systemctl --user restart claude-geo-guard.service` returns the service to the file's values.
+
 ## How the guard works
 
 The guard checks the **public source IP** seen by each destination over IPv4 and IPv6 where usable. The server IP returned by DNS is a different address. The probes send no Claude credentials or cookies.
@@ -52,7 +70,7 @@ The guard checks the **public source IP** seen by each destination over IPv4 and
 | `api.anthropic.com/cdn-cgi/trace` | Client IP and country seen by the API edge | Required | Required |
 | `ifconfig.io/all.json` | Client IP and country seen by an unrelated site | Required | Skipped |
 
-For a GB policy, both Claude destinations must report GB even in split-tunnel mode. They may see different UK IPs. If you configure an IP allowlist, **each** observed IP must be on it. A failed required probe blocks the checkpoint. Run `claude-geo-guard check` to see the observations by destination and address family.
+For a GB policy, both Claude destinations must report GB even in split-tunnel mode. They may see different UK IPs. If you configure an IP allowlist, **each** observed IP must be on it. A probe that reports another country, or fails for any reason other than a timeout or unreachable network, blocks the checkpoint. If one Claude destination verifies the country and the others only time out, the check passes. If nothing can be verified, running Claude keeps working and new launches wait. Run `claude-geo-guard check` to see the observations by destination and address family.
 
 ```mermaid
 flowchart TD

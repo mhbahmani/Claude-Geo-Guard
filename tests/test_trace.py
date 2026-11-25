@@ -21,7 +21,7 @@ from claude_geo_guard.storage import atomic_write, json_bytes
 def test_independent_destinations(isolated, monkeypatch, split, general, api, allowed):
     atomic_write(isolated.guard_config, json_bytes(dict(config.DEFAULTS, split_tunnel=split)))
 
-    def query(family, host):
+    def query(family, host, patient=False):
         return checker.Egress(
             {None: general, "api.anthropic.com": api, "claude.ai": "GB"}[host], "1.1.1.1"
         )

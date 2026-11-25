@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import cli_launcher, config, settings_manager
+from . import cli_launcher, config, settings_manager, verdict_cache
 from . import shell
 from .executables import Ambiguous
 from .platforms import backend
@@ -304,6 +304,23 @@ def summary(plan):
     }
 
 
+def hook_fast_path(paths):
+    """Shell lines that allow a hook from a fresh shared verdict without starting Python.
+
+    Anything else (a denial, a stale or missing verdict, a proxy environment,
+    Cursor's envelope) falls through to the full hook."""
+    verdict, settings = shlex.quote(str(paths.verdict)), shlex.quote(str(paths.guard_config))
+    proxies = "".join("${" + name + "-}" for name in verdict_cache.PROXIES)
+    return (
+        f'if [ "${{1-}}" = hook ] && [ -z "${{CURSOR_VERSION-}}{proxies}" ] \\\n'
+        f"  && [ -f {settings} ] && [ -f /etc/hosts ] && [ {verdict} -nt {settings} ] && [ {verdict} -nt /etc/hosts ] \\\n"
+        f"  && read -r expires state rest 2>/dev/null <{verdict} \\\n"
+        '  && [ "$expires" -gt "$(date +%s)" ] 2>/dev/null; then\n'
+        '  case "$state" in allow | unverified) exit 0 ;; esac\n'
+        "fi\n"
+    )
+
+
 def journal_path(paths):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     return paths.manifest.parent / "backups" / f"{stamp}-{uuid.uuid4().hex[:8]}.json"
@@ -395,13 +412,16 @@ def install(paths, plan):
                 "sys.path.insert(0, str(Path(__file__).parent))\n"
                 "from claude_geo_guard.paths import Paths\n"
                 f"Paths.pin({str(paths.home)!r}, {str(paths.data)!r}, "
-                f"{str(paths.config)!r}, {str(paths.state)!r})\n"
+                f"{str(paths.config)!r}, {str(paths.state)!r}, "
+                f"{str(paths.runtime) if paths.runtime else None!r})\n"
                 "from claude_geo_guard.cli import main\nraise SystemExit(main())\n"
             )
             write(paths.root / "lib/bootstrap.py", bootstrap.encode())
             for name, subcommand in (("claude-geo-guard", ""), ("claude", " code --")):
                 script = (
-                    "#!/bin/sh\n# CLAUDE_GEO_GUARD_WRAPPER\nexec "
+                    "#!/bin/sh\n# CLAUDE_GEO_GUARD_WRAPPER\n"
+                    + (hook_fast_path(paths) if not subcommand else "")
+                    + "exec "
                     + shlex.quote(sys.executable)
                     + " -I -B "
                     + shlex.quote(str(paths.root / "lib/bootstrap.py"))

@@ -18,6 +18,7 @@ def isolated(tmp_path, monkeypatch):
         "XDG_DATA_HOME": home / ".local/share",
         "XDG_CONFIG_HOME": home / ".config",
         "XDG_STATE_HOME": home / ".local/state",
+        "XDG_RUNTIME_DIR": tmp_path / "run",
         "XDG_DATA_DIRS": tmp_path / "system/share",
         "XDG_CONFIG_DIRS": tmp_path / "system/xdg",
     }.items():
