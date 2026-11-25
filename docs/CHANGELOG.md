@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+
+- When a runtime check fails, the monitor requests the error window as it starts closing Claude Desktop. The window explains the failure while shutdown proceeds.
+- On Linux, the monitor uses the graphical session's current display settings and sends a critical desktop notification. On macOS, the runtime alert requests focus and stays open until dismissed.
+
 ## 0.7.1
 
 - On Linux, the installer marks guarded Desktop menu entries as user-managed so Claude Desktop preserves the pre-launch check when it refreshes its shortcuts. Rerun the installer to repair an affected entry.
