@@ -112,7 +112,7 @@ def query(family: int, host=None) -> Egress:
                 "--proto",
                 "=https",
                 "--connect-timeout",
-                "2",
+                "3" if host is not None else "2",
                 "--max-time",
                 "6",
                 "--max-filesize",
