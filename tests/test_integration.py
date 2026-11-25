@@ -137,7 +137,7 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
     )
     (environment["bins"] / "notify-send").write_text(
         "#!/usr/bin/python3\nimport os, sys\nfrom pathlib import Path\n"
-        '(Path(os.environ["HOME"]) / "runtime-notice").write_text(sys.argv[2])\n'
+        '(Path(os.environ["HOME"]) / "runtime-notice").write_text(sys.argv[-2])\n'
     )
     app = subprocess.Popen([str(environment["desktop"]), "60"])
     other = subprocess.Popen(["/bin/sleep", "60"])

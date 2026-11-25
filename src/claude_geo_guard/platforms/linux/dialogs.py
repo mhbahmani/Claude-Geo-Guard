@@ -275,7 +275,9 @@ def _notify_error(title, body, env):
         subprocess.run(
             [
                 "notify-send",
-                "--urgency=critical",
+                "--urgency=normal",
+                "--expire-time=5000",
+                "--hint=int:transient:1",
                 title,
                 html.escape(body),
             ],

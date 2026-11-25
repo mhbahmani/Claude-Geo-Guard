@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- Desktop closure notifications now request a five-second timeout and no longer remain as critical, persistent notifications.
+
 ## 0.8.0
 
 - Installed hooks, launchers and the monitor always use the configuration and state chosen at installation, even when Claude runs them with different XDG directories. A missing installed `config.json` denies access and names the expected path. Rerun the installer to update existing launchers.
