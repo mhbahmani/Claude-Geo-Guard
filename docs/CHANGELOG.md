@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+- On Linux, the installer marks guarded Desktop menu entries as user-managed so Claude Desktop preserves the pre-launch check when it refreshes its shortcuts. Rerun the installer to repair an affected entry.
+- Guarded Desktop and interactive CLI launches show progress while the guard checks the public IP and country. If verification fails or times out, Claude stays closed.
+
 ## 0.7.0
 
 - Guided setup asks whether to enable protection immediately, defaulting to yes on first install. Use `--disabled` for an unattended installation with protection off.
