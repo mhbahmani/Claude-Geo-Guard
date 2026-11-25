@@ -1,10 +1,11 @@
 import json
+from pathlib import Path
 
 import pytest
 
 from claude_geo_guard import installer
 from claude_geo_guard.platforms.linux import systemd
-from claude_geo_guard.storage import read
+from claude_geo_guard.storage import decode, read
 
 
 def files(home):
@@ -161,6 +162,28 @@ def test_unknown_managed_file_preserved(environment):
         installer.install(paths, installer.preflight(paths))
     assert target.read_text() == "user data"
     assert not paths.settings.exists()
+
+
+def test_hand_copied_package_files_do_not_block_updates(environment):
+    paths = environment["paths"]
+    package = paths.root / "lib/claude_geo_guard"
+    stray = package / "monitor.py"
+    stray.parent.mkdir(parents=True)
+    stray.write_text("# copied by hand before installation\n")
+    result = installer.install(paths, installer.preflight(paths))
+    assert result["replaced_files"] == [str(stray)]
+    journal = json.loads(read(Path(result["backup_journal"])))
+    saved = {entry["path"]: decode(entry["before"]) for entry in journal}
+    assert saved[str(stray)] == b"# copied by hand before installation\n"
+    edited = package / "checker.py"
+    edited.write_text("# edited after installation\n")
+    result = installer.install(paths, installer.preflight(paths))
+    assert result["replaced_files"] == [str(edited)]
+    assert b"edited after" not in edited.read_bytes()
+    assert "replaced_files" not in installer.install(paths, installer.preflight(paths))
+    edited.write_text("# edited again\n")
+    installer.uninstall(paths)
+    assert not package.exists() or not any(package.rglob("*.py"))
 
 
 def test_changed_settings_between_plan_and_install(environment):

@@ -3,6 +3,7 @@ import json
 import os
 import pty
 import select
+import shutil
 import threading
 from pathlib import Path
 import subprocess
@@ -10,6 +11,33 @@ import sys
 import tarfile
 
 import pytest
+
+
+@pytest.mark.parametrize("release", [False, True])
+def test_checkout_installs_its_own_files(tmp_path, monkeypatch, release):
+    checkout = tmp_path / "checkout"
+    (checkout / "src/claude_geo_guard").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parents[1] / "install.sh", checkout)
+    (checkout / "run.py").write_text("import json,sys;print(json.dumps(['local', *sys.argv[1:]]))")
+    curl = tmp_path / "bin" / "curl"
+    curl.parent.mkdir()
+    curl.write_text("#!/bin/sh\necho download >&2\nexit 7\n")
+    curl.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{curl.parent}:{os.environ['PATH']}")
+    result = subprocess.run(
+        ["sh", "./install.sh", "--yes", *(["--release"] if release else [])],
+        cwd=checkout,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    if release:
+        assert result.returncode != 0 and "download" in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == ["local", "install", "--yes"]
+        assert f"Installing from this checkout: {checkout}" in result.stderr
 
 
 @pytest.mark.parametrize("dev,terminal", [(True, False), (False, False), (True, True)])

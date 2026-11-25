@@ -1,19 +1,33 @@
 #!/bin/sh
 # Standalone bootstrap for both ./install.sh and curl ... | sh.
 set -eu
+downloads_requested() {
+    for arg in "$@"; do
+        case "$arg" in --release|--dev) return 0 ;; esac
+    done
+    return 1
+}
 install_guard() {
     command -v python3 >/dev/null || { echo "Python 3.10+ is required" >&2; return 2; }
     case "$0" in
         */install.sh|install.sh)
+            root=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
             case "${1:-}" in
                 --check|--status)
                     cmd=${1#--}; shift
                     if [ "$cmd" = status ]; then cmd=doctor; fi
-                    root=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
                     if [ -f "$root/run.py" ]; then
                         exec python3 -IB "$root/run.py" "$cmd" "$@"
                     fi
                     set -- "--$cmd" "$@"
+                    ;;
+                *)
+                    # A checkout installs its own files; downloading would silently replace them.
+                    if [ -f "$root/run.py" ] && [ -d "$root/src/claude_geo_guard" ] \
+                        && ! downloads_requested "$@"; then
+                        echo "Installing from this checkout: $root (use --release for the latest published release)" >&2
+                        exec python3 -IB "$root/run.py" install "$@"
+                    fi
                     ;;
             esac
             ;;
@@ -33,14 +47,14 @@ if sys.version_info < (3, 10):
 repo = "mhbahmani/Claude-Geo-Guard"
 args = sys.argv[1:]
 dev = "--dev" in args
-args = [arg for arg in args if arg != "--dev"]
+args = [arg for arg in args if arg not in ("--dev", "--release")]
 command = "install"
 if args[:1] in (["--check"], ["--status"]):
     command = args.pop(0)[2:]
     if command == "status":
         command = "doctor"
 if "--help" in args or "-h" in args:
-    print("Source: latest published release by default; --dev selects master.", flush=True)
+    print("Source: this checkout when run as ./install.sh, otherwise the latest published release; --release downloads the release and --dev selects master.", flush=True)
 
 curl = ["curl", "-q", "--fail", "--show-error", "--location",
         "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "10", "--max-time", "90"]

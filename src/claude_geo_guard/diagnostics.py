@@ -132,7 +132,9 @@ def diagnostics(paths):
                 "Desktop error windows unavailable: install zenity (GNOME) or kdialog (KDE)"
             )
         for filename, record in manifest["files"].items():
-            if record["kind"] == "file" and read(Path(filename)) != decode(record["after"]):
+            if record["kind"] in {"file", "package"} and read(Path(filename)) != decode(
+                record["after"]
+            ):
                 issues.append(f"Managed file missing/changed: {filename}; inspect and reinstall")
         if manifest["desktops"] and not report["monitor_active"]:
             issues.append("Monitor inactive: systemctl --user restart claude-geo-guard.service")

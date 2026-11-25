@@ -276,7 +276,11 @@ def main(argv=None):
                 raise ValueError("installation canceled; use --yes for unattended installation")
             if interactive:
                 print("\nInstalling Claude Geo Guard…", flush=True)
-            installer.install(paths, plan)
+            result = installer.install(paths, plan)
+            for replaced in result.get("replaced_files", []):
+                print(f"Replaced locally edited guard file: {replaced}", file=sys.stderr)
+            if result.get("replaced_files"):
+                print(f"Previous contents: {result['backup_journal']}", file=sys.stderr)
             if not plan["enabled"]:
                 print(config.DISABLED_MESSAGE)
             print(shell.routing_message(paths.bin / "claude"), file=sys.stderr)
@@ -310,9 +314,11 @@ def main(argv=None):
                 cli_launcher.launch(paths, forwarded, manifest.get("claude_binary"))
         return 0
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-        label = (
-            "Claude Geo Guard blocked CLI launch" if args.command == "code" else "Claude Geo Guard"
-        )
+        label = {
+            "code": "Claude Geo Guard blocked CLI launch",
+            "install": "Claude Geo Guard installation failed; nothing was changed",
+        }.get(args.command, "Claude Geo Guard")
+        sys.stdout.flush()
         print(f"{label}: {error}", file=sys.stderr)
         if args.command == "desktop" and not backend("dialogs").show_error(error):
             print(

@@ -15,9 +15,11 @@ Omit `-s -- --dry-run` for interactive installation, or pass options after `sh -
 ./install.sh --yes --country GB
 ```
 
+`./install.sh` in a checkout installs that checkout's files, including uncommitted changes. Pass `--release` to download the latest published release instead, or `--dev` for master. The guard's private package under `~/.local/share/claude-geo-guard/lib` is always replaced from the source being installed. Files that were edited or copied there by hand are listed, and their previous contents are kept in the backup journal.
+
 Dry-run performs read-only environment, JSON, desktop and version checks. It does not write backups, install hooks, contact the provider, start services or launch Claude beyond querying CLI `--version`. Missing requirements or unsupported launch entries abort before mutations. By default all discovered Desktop installations/autostart entries are planned. `--skip-desktop` explicitly requests CLI/hooks-only integration.
 
-The first installation defaults to GB if `--country` is omitted. Use an ISO alpha-2 code to select another country, such as `./install.sh --yes --country DE`. Reinstalling without this option preserves the saved country. After installation, `claude-geo-guard set-country FR` changes it atomically with a retained backup; the next launch, hook and monitor check use FR. No service restart is necessary. `status` displays `allowed_country`.
+The first installation defaults to GB if `--country` is omitted. Use an ISO alpha-2 code to select another country, such as `./install.sh --yes --country DE`. Reinstalling without this option preserves the saved country. After installation, `claude-geo-guard set-country FR` changes it atomically with a retained backup; the next launch, hook and monitor check use FR. No service restart is necessary. `doctor --json` displays `allowed_country`.
 
 After installation, the guard checks how a fresh interactive Zsh or Bash resolves `claude`. A function or alias triggers a warning because it can choose which executable to run. In your own terminal, use `whence -va claude` (Zsh) or `type -a claude` (Bash) to inspect resolution. Each guarded CLI launch prints its decision to stderr, keeping stdout available for Claude’s output.
 

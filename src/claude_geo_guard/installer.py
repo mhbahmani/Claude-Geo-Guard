@@ -322,6 +322,7 @@ def install(paths, plan):
         old = plan["old"] or {}
         tx = Transaction(journal_path(paths))
         records = dict(old.get("files", {}))
+        replaced = []
         guard = paths.bin / "claude-geo-guard"
         was_active = systemd.active() if plan["desktops"] else False
         was_enabled = (
@@ -334,6 +335,17 @@ def install(paths, plan):
             key = str(path)
             before = read(path)
             prior = records.get(key)
+            if kind == "package":
+                # The private package only ever holds guard code; a stale or hand-copied
+                # module must not block the update. The journal keeps the old contents.
+                if before is not None and (not prior or before != decode(prior["after"])):
+                    if before != data:
+                        replaced.append(key)
+                    prior = {
+                        "before": prior["before"] if prior else encode(None),
+                        "after": encode(before),
+                        "mode": prior["mode"] if prior else mode,
+                    }
             if prior and kind == "file" and before != decode(prior["after"]):
                 raise ValueError(f"managed file edited; preserved: {path}")
             if not prior and before is not None and kind == "file":
@@ -376,6 +388,7 @@ def install(paths, plan):
                 write(
                     paths.root / "lib/claude_geo_guard" / source.relative_to(package),
                     source.read_bytes(),
+                    kind="package",
                 )
             bootstrap = (
                 "import sys\nfrom pathlib import Path\n"
@@ -492,7 +505,11 @@ def install(paths, plan):
                     file=sys.stderr,
                 )
             raise
-        return summary(plan)
+        result = summary(plan)
+        if replaced:
+            result["replaced_files"] = replaced
+            result["backup_journal"] = str(tx.backup)
+        return result
 
 
 def uninstall(paths):
@@ -529,6 +546,8 @@ def uninstall(paths):
                 target = shell.remove(raw.decode(), manifest["shell_block"]).encode()
                 if not target and before is None:
                     target = None
+            elif record["kind"] == "package":
+                target = before
             elif record["kind"] == "desktop":
                 if raw == decode(record["after"]):
                     restored = desktop_map[filename]["restore_text"]
