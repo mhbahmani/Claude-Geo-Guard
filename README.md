@@ -20,6 +20,8 @@ Run without flags for guided setup. Press Enter to accept each value in brackets
 
 Setup asks whether to enable the guard immediately. Press Enter for yes on first install, or choose no to enable it later with `claude-geo-guard enable`. Use `claude-geo-guard disable` to turn protection off again. While disabled, the CLI wrapper and Desktop launcher warn before opening Claude, hooks allow actions, and the runtime monitor stays idle.
 
+With protection enabled, opening Claude through a guarded launcher first shows that the guard is checking your public IP and country. Claude starts only after verification succeeds. A timeout keeps it closed. On Linux, reinstall from this checkout with `python3 -IB run.py install --yes` to repair an existing Claude-generated menu entry.
+
 To remove the guard, run `claude-geo-guard uninstall`.
 
 ## How the guard works

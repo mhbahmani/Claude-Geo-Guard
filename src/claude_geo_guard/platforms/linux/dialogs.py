@@ -58,6 +58,24 @@ def egress_facts(verdict):
     ] or [("Detected country / IP", "Not verified · IP not returned")]
 
 
+def progress_command(message):
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return None
+    helper = available()
+    if helper == "zenity":
+        return [
+            helper,
+            "--progress",
+            "--pulsate",
+            "--no-cancel",
+            f"--title={TITLE}",
+            f"--text={message}",
+        ]
+    if helper:
+        return [helper, "--title", TITLE, "--ok-label", "Hide", "--msgbox", message]
+    return None
+
+
 def show_warning(message):
     helper = available()
     if helper == "zenity":

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from . import config
 from .checker import check
+from .launch_progress import verifying
 from .timezone import launch_environment
 from .platforms import backend
 
@@ -37,25 +38,26 @@ def launch(paths, args):
         print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
         backend("dialogs").show_warning(config.DISABLED_MESSAGE)
         return os.execve(executable, [executable, *args[1:]], os.environ)
-    if not systemd.active() and not (
-        systemd.best_effort("start", systemd.UNIT) and systemd.active()
-    ):
-        raise LaunchBlocked(
-            "runtime monitor inactive; run systemctl --user restart claude-geo-guard",
-            kind="monitor",
-        )
-    verdict = check()
-    if not verdict.allowed:
-        details = [verdict.reason]
-        if verdict.allowed_country:
-            details.append(f"Allowed country: {verdict.allowed_country}")
-        for family, country in sorted(verdict.countries.items()):
-            details.append(
-                f"Detected IPv{family} country: {country}; IP: {verdict.ips.get(family, 'not returned')}"
+    with verifying():
+        if not systemd.active() and not (
+            systemd.best_effort("start", systemd.UNIT) and systemd.active()
+        ):
+            raise LaunchBlocked(
+                "runtime monitor inactive; run systemctl --user restart claude-geo-guard",
+                kind="monitor",
             )
-        details.append("Country provider: Claude edge traces (plus ifconfig.io in full mode)")
-        raise LaunchBlocked("\n".join(details), kind="verification", verdict=verdict)
-    environment = launch_environment(paths)
+        verdict = check()
+        if not verdict.allowed:
+            details = [verdict.reason]
+            if verdict.allowed_country:
+                details.append(f"Allowed country: {verdict.allowed_country}")
+            for family, country in sorted(verdict.countries.items()):
+                details.append(
+                    f"Detected IPv{family} country: {country}; IP: {verdict.ips.get(family, 'not returned')}"
+                )
+            details.append("Country provider: Claude edge traces (plus ifconfig.io in full mode)")
+            raise LaunchBlocked("\n".join(details), kind="verification", verdict=verdict)
+        environment = launch_environment(paths)
     if preferences["success_notifications"]:
         from .platforms.linux.dialogs import show_success
 

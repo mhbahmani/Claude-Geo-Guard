@@ -11,6 +11,7 @@ import tempfile
 
 from ... import config
 from ...checker import check
+from ...launch_progress import verifying
 from ...timezone import launch_environment
 from . import dialogs, service
 
@@ -141,22 +142,23 @@ def launch(paths, args):
         )
         subprocess.run(["/usr/bin/open", "-a", record["path"]], check=True, timeout=15)
         return
-    if not service.healthy(paths):
-        raise ValueError("runtime monitor is inactive")
-    verdict = check()
-    detail = "\n".join(
-        f"IPv{family}: {verdict.countries.get(family, 'unavailable')} · {verdict.ips.get(family, 'unavailable')}"
-        for family in sorted(verdict.countries.keys() | verdict.ips.keys())
-    )
-    if not verdict.allowed:
-        raise ValueError(
-            f"{verdict.reason}\nAllowed country: {verdict.allowed_country}\n{detail or 'Country and IP unavailable'}"
+    with verifying():
+        if not service.healthy(paths):
+            raise ValueError("runtime monitor is inactive")
+        verdict = check()
+        detail = "\n".join(
+            f"IPv{family}: {verdict.countries.get(family, 'unavailable')} · {verdict.ips.get(family, 'unavailable')}"
+            for family in sorted(verdict.countries.keys() | verdict.ips.keys())
         )
-    if identify(Path(record["path"])) != record:
-        raise ValueError("Claude.app changed; inspect it and rerun installation")
-    if not service.healthy(paths):
-        raise ValueError("runtime monitor stopped during verification")
-    env = launch_environment(paths)
+        if not verdict.allowed:
+            raise ValueError(
+                f"{verdict.reason}\nAllowed country: {verdict.allowed_country}\n{detail or 'Country and IP unavailable'}"
+            )
+        if identify(Path(record["path"])) != record:
+            raise ValueError("Claude.app changed; inspect it and rerun installation")
+        if not service.healthy(paths):
+            raise ValueError("runtime monitor stopped during verification")
+        env = launch_environment(paths)
     notify_success = config.load(paths)["success_notifications"]
     flags = ["--env", "TZ=" + env["TZ"]] if "TZ" in env else []
     subprocess.run(["/usr/bin/open", *flags, "-a", record["path"]], check=True, timeout=15, env=env)

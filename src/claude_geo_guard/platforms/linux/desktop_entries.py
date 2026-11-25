@@ -166,6 +166,9 @@ def intercept(entry, guard):
             replacement = f"Exec={quote(guard)} desktop -- {bare[5:]}"
         elif section == "Desktop Entry" and bare.startswith("DBusActivatable="):
             replacement = "DBusActivatable=false"
+        elif section == "Desktop Entry" and bare == "X-Claude-Generated=true":
+            # Claude regenerates entries carrying this marker and drops wrapped Exec lines.
+            replacement = "X-Claude-Generated=false"
         if replacement != bare:
             edits.append([section, bare, replacement])
         output.append(replacement + line[len(bare) :])

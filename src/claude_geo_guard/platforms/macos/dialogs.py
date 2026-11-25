@@ -74,6 +74,19 @@ def present(script, message, stop=None):
         return False
 
 
+def progress_command(message):
+    return [
+        "/usr/bin/osascript",
+        "-e",
+        "on run argv",
+        "-e",
+        'display dialog (item 1 of argv) with title "Claude Geo Guard" buttons {"Hide"} default button "Hide"',
+        "-e",
+        "end run",
+        message,
+    ]
+
+
 def show_error(error, runtime=False, stop=None):
     message = describe(error, runtime=runtime)
     return present(

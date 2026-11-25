@@ -128,6 +128,7 @@ def test_guarded_launch(isolated, monkeypatch, case):
     )
     monkeypatch.setattr(application, "identify", lambda _: {} if case == "changed" else record)
     monkeypatch.setattr(application, "launch_environment", lambda _: {"TZ": "Europe/London"})
+    monkeypatch.setattr(application.dialogs, "progress_command", lambda _: None)
     launch = Mock()
     monkeypatch.setattr(application.subprocess, "run", launch)
     monkeypatch.setattr(application.dialogs, "notify", Mock())

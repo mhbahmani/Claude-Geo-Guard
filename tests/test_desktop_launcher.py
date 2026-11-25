@@ -197,3 +197,26 @@ def test_launch_starts_stopped_monitor(environment, monkeypatch):
     desktop_launcher.launch(paths, args)
     start.assert_called_once_with("start", systemd.UNIT)
     execute.assert_called_once()
+
+
+def test_claude_generated_launcher_stays_guarded_across_reinstall(environment):
+    from claude_geo_guard import installer
+
+    paths = environment["paths"]
+    target = paths.data / "applications" / environment["entry"].name
+    target.parent.mkdir(parents=True)
+    original = (
+        environment["entry"]
+        .read_text()
+        .replace("DBusActivatable=true", "X-Claude-Generated=true\nDBusActivatable=true")
+    )
+    target.write_text(original)
+    for _ in range(2):
+        installer.install(paths, installer.preflight(paths))
+        guarded = target.read_text()
+        assert "X-Claude-Generated=true" not in guarded
+        for section in values(guarded).values():
+            if "Exec" in section:
+                assert 'claude-geo-guard" desktop -- ' in section["Exec"]
+    installer.uninstall(paths)
+    assert target.read_text() == original

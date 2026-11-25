@@ -82,6 +82,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
     assert json.loads(report.stdout)["hooks_registered"]
     helper.write_text(
         "#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\n"
+        'if "--info" not in sys.argv: raise SystemExit(0)\n'
         '(Path(os.environ["HOME"]) / "success-message.json").write_text(json.dumps(sys.argv[1:]))\n'
     )
     # Real native fake desktop launch via guard; wrapper exec preserves signal status.
@@ -158,3 +159,58 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
                 child.kill()
             child.wait()
         installer.uninstall(paths)
+
+
+def test_pending_launch_waits_for_verification(environment, monkeypatch):
+    from conftest import script
+
+    paths = environment["paths"]
+    bins = environment["bins"]
+    installer.install(paths, installer.preflight(paths))
+    # Hold every provider request until the test releases it, then simulate the screenshot timeout.
+    script(
+        bins / "curl",
+        """from pathlib import Path
+import time
+here = Path(__file__).parent
+(here / 'checking').touch()
+while not (here / 'release').exists():
+    time.sleep(.02)
+raise SystemExit(28)
+""",
+    )
+    script(
+        bins / "zenity",
+        """from pathlib import Path
+import os, sys, time
+here = Path(__file__).parent
+if '--progress' in sys.argv:
+    (here / 'progress').write_text(str(os.getpid()))
+    time.sleep(20)
+elif '--error' in sys.argv:
+    (here / 'failure').touch()
+""",
+    )
+    monkeypatch.setenv("DISPLAY", ":fake")
+    monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
+    cli = paths.bin / "claude"
+    desktop = environment["desktop"]
+    guard = paths.bin / "claude-geo-guard"
+    # If either wrapper starts Claude prematurely, that process will replace it.
+    with subprocess.Popen([cli, "pending"], stdout=subprocess.PIPE, stderr=subprocess.PIPE) as code:
+        with subprocess.Popen([guard, "desktop", "--", desktop, "60"]) as app:
+            try:
+                deadline = time.monotonic() + 5
+                while not all((bins / name).exists() for name in ("checking", "progress")):
+                    assert time.monotonic() < deadline
+                    time.sleep(0.02)
+                assert code.poll() is None and app.poll() is None
+                assert Path(f"/proc/{app.pid}/exe").resolve() != desktop
+            finally:
+                (bins / "release").touch()
+            assert app.wait(timeout=5) == 2
+            assert (bins / "failure").exists()
+            assert not Path("/proc", (bins / "progress").read_text()).exists()
+        stdout, stderr = code.communicate(timeout=5)
+        assert code.returncode == 2 and not stdout
+        assert b"Checking your public IP and country" in stderr

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import config
 from .checker import check
+from .launch_progress import verifying
 from .timezone import launch_environment
 
 MIN_VERSION = (2, 1, 295)
@@ -77,11 +78,12 @@ def launch(paths, args, explicit=None):
     if not config.load(paths)["enabled"]:
         print(config.DISABLED_MESSAGE, file=sys.stderr, flush=True)
         return os.execve(str(binary), [str(binary), *args], os.environ)
-    verdict = check()
-    if not verdict.allowed:
-        raise ValueError(verdict.reason)
-    environment = launch_environment(paths)
-    version(binary)
+    with verifying(terminal=True):
+        verdict = check()
+        if not verdict.allowed:
+            raise ValueError(verdict.reason)
+        environment = launch_environment(paths)
+        version(binary)
     print(
         "Claude Geo Guard: launch checks passed. Starting Claude Code.", file=sys.stderr, flush=True
     )
