@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+- Guided setup asks whether to enable protection immediately, defaulting to yes on first install. Use `--disabled` for an unattended installation with protection off.
+- Switch protection on or off with `claude-geo-guard enable` and `claude-geo-guard disable`. While disabled, the CLI and Desktop launchers show the enable command, hooks allow actions, and the monitor skips enforcement.
+- The project is now licensed under Apache 2.0.
+
 ## 0.6.2
 
 - macOS alerts explain why the guard closed Claude, show the available country and IP details, and suggest how to recover.
