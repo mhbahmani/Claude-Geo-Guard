@@ -53,7 +53,21 @@ def stop_after(cycles, between=None):
                 self.set()
             return self.stopped
 
-    return Stop, waits
+    class Wake:
+        def __init__(self):
+            self.stop = Stop()
+
+        def halt(self, *_):
+            self.stop.set()
+
+        def poke(self):
+            pass
+
+        def sleep(self, seconds):
+            self.stop.wait(seconds)
+            return False
+
+    return Wake, waits
 
 
 # Issue 1: installed entry points keep their policy under a different environment.
@@ -281,7 +295,7 @@ def test_bad_manifest_keeps_last_coverage_and_recovers(environment, caplog):
 
     caplog.set_level("INFO")
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(monitor.threading, "Event", Stop)
+        patch.setattr(monitor, "Wake", Stop)
         patch.setattr(monitor.signal, "signal", lambda *_: None)
         patch.setattr(monitor, "tick", tick)
         monitor.run(paths)
@@ -303,7 +317,7 @@ def test_cold_start_with_bad_manifest_blocks_desktop_launch(environment, monkeyp
             desktop_launcher.wait_until_ready(paths, systemd, timeout=0)
         return str(error.value)
 
-    monkeypatch.setattr(monitor.threading, "Event", Stop)
+    monkeypatch.setattr(monitor, "Wake", Stop)
     monkeypatch.setattr(monitor.signal, "signal", lambda *_: None)
     monitor.run(paths)
     assert "unexpected structure" in blocked[0]

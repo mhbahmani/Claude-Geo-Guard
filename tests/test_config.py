@@ -187,7 +187,21 @@ def test_monitor_reloads_manual_edits_and_fails_closed(
                 self.set()
             return self.stopped
 
-    monkeypatch.setattr(monitor.threading, "Event", Stop)
+    class Wake:
+        def __init__(self):
+            self.stop = Stop()
+
+        def halt(self, *_):
+            self.stop.set()
+
+        def poke(self):
+            pass
+
+        def sleep(self, seconds):
+            self.stop.wait(seconds)
+            return False
+
+    monkeypatch.setattr(monitor, "Wake", Wake)
     monkeypatch.setattr(monitor.signal, "signal", lambda *_: None)
 
     def tick(binaries, previous, grace, stop, **kwargs):

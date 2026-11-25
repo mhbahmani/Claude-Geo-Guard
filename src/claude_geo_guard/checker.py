@@ -2,23 +2,58 @@
 
 import ipaddress
 import json
+import logging
 import os
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 
-from .platforms import snapshot
+from .platforms import Unroutable, snapshot
 from . import config, dns_guard
 from .policy import COUNTRIES, normalize_country
 
 TRACE_HOSTS = ("claude.ai", "api.anthropic.com")
 ENDPOINT = "https://ifconfig.io/all.json"
-# curl exits for a dropped connection or timeout, which say nothing about the egress country.
-TRANSIENT_EXITS = {7, 28, 35, 52, 55, 56}
+# curl exits for DNS failure, a dropped connection or timeout: no evidence about the country.
+TRANSIENT_EXITS = {6, 7, 28, 35, 52, 55, 56}
 # Hooks time out after 30 seconds; a retry must fit inside this overall budget.
 DEADLINE_SECONDS = 20
 RETRY_SECONDS = 9
+LOG = logging.getLogger("claude-geo-guard")
+TIMING_MARKER = "GUARD_TIMING:"
+TIMING_FIELDS = (
+    "time_namelookup",
+    "time_connect",
+    "time_appconnect",
+    "time_starttransfer",
+    "time_total",
+)
+
+
+def failure_timing(host, family, error):
+    # Only numeric curl metrics are logged, never raw stderr or response content.
+    raw = error.stderr or b""
+    if isinstance(raw, bytes):
+        raw = raw.decode("ascii", errors="replace")
+    timing = {}
+    if TIMING_MARKER in raw:
+        values = raw.rsplit(TIMING_MARKER, 1)[1].strip().split(",")
+        if len(values) == len(TIMING_FIELDS):
+            for name, value in zip(TIMING_FIELDS, values):
+                if value.replace(".", "", 1).isdigit() and len(value) < 20:
+                    timing[name] = float(value)
+    LOG.warning(
+        json.dumps(
+            {
+                "event": "provider_request_failed",
+                "host": host or "ifconfig.io",
+                "family": family,
+                "curl_exit": error.returncode,
+                "timing_seconds": timing,
+            }
+        )
+    )
 
 
 @dataclass
@@ -33,6 +68,10 @@ class Verdict:
     errors: dict[int, str] = field(default_factory=dict)
 
     observations: dict = field(default_factory=dict)
+    # Denied only because the network was unreachable; nothing contradicted the policy.
+    transient: bool = False
+    # Routing state that an allowed verdict verified.
+    fingerprint: str | None = None
 
     def as_dict(self):
         return asdict(self)
@@ -82,7 +121,9 @@ def query(family: int, host=None) -> Egress:
                 "--silent",
                 "--show-error",
                 "--write-out",
-                "\n%{http_code}",
+                "\n%{http_code}%{stderr}"
+                + TIMING_MARKER
+                + ",".join("%{" + key + "}" for key in TIMING_FIELDS),
                 "--header",
                 "Authorization:",
                 "--header",
@@ -100,6 +141,7 @@ def query(family: int, host=None) -> Egress:
             check=True,
         )
     except subprocess.CalledProcessError as error:
+        failure_timing(host, family, error)
         reasons = {
             5: "proxy DNS lookup failed",
             6: "provider DNS lookup failed",
@@ -117,8 +159,10 @@ def query(family: int, host=None) -> Egress:
         reason = reasons.get(error.returncode, "provider request failed")
         status = _http_status(error.stdout)
         context = f"curl exit {error.returncode}" + (f", HTTP {status}" if status else "")
+        overloaded = status is not None and (status == "429" or status.startswith("5"))
         raise ProviderFailure(
-            f"IPv{family}: {reason} ({context})", transient=error.returncode in TRANSIENT_EXITS
+            f"IPv{family}: {reason} ({context})",
+            transient=error.returncode in TRANSIENT_EXITS or overloaded,
         ) from None
     except subprocess.TimeoutExpired:
         raise ProviderFailure(
@@ -204,8 +248,19 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
 
     observations = {}
 
-    def verdict(allowed, reason):
-        return Verdict(allowed, reason, countries, target, ips, allowed_ips, errors, observations)
+    def verdict(allowed, reason, *, transient=False, fingerprint=None):
+        return Verdict(
+            allowed,
+            reason,
+            countries,
+            target,
+            ips,
+            allowed_ips,
+            errors,
+            observations,
+            transient,
+            fingerprint,
+        )
 
     env = os.environ if environ is None else environ
     if any(
@@ -225,16 +280,19 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
             dns_guard.check_hosts()
         except (ValueError, OSError):
             return verdict(False, "protected domain override or unreadable /etc/hosts")
-        before = routes()
+        try:
+            before = routes()
+        except Unroutable as error:
+            return verdict(False, f"network unavailable: {error}", transient=True)
         if not before.families:
-            return verdict(False, "no usable public routes")
+            return verdict(False, "no usable public routes", transient=True)
         hosts = [*TRACE_HOSTS] if preferences["split_tunnel"] else [*TRACE_HOSTS, None]
         keys = [
             (family, host)
             for family in before.families
             for host in (hosts if request is None else [None])
         ]
-        failures = {}
+        failures, failure_transient = {}, {}
 
         def collect(pending):
             transient = {}
@@ -276,6 +334,7 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
                     transient[family, host] = isinstance(
                         error, (TimeoutError, subprocess.TimeoutExpired)
                     )
+            failure_transient.update(transient)
             return transient
 
         def submit(pool, key):
@@ -289,7 +348,7 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
             mismatch = any(country != target for country in countries.values()) or (
                 allowed_ips and any(ip not in allowed_ips for ip in ips.values())
             )
-            # One retry for a dropped request, never for a confirmed mismatch or a hard error.
+            # One immediate retry for a dropped request, never for a confirmed mismatch or a hard error.
             if (
                 transient
                 and all(transient.values())
@@ -298,12 +357,23 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
             ):
                 collect({key: submit(pool, key) for key in transient})
         for (family, _host), message in failures.items():
-            errors[family] = message
+            errors[family] = errors[family] + "; " + message if family in errors else message
+        mismatch = any(country != target for country in countries.values()) or bool(
+            allowed_ips and any(ip not in allowed_ips for ip in ips.values())
+        )
         if errors:
-            return verdict(False, "verification failed: " + "; ".join(errors.values()))
+            return verdict(
+                False,
+                "verification failed: " + "; ".join(errors.values()),
+                transient=not mismatch and all(failure_transient[key] for key in failures),
+            )
         dns_guard.check_hosts()
-        if before != routes():
-            return verdict(False, "network changed during verification")
+        try:
+            after = routes()
+        except Unroutable:
+            after = None
+        if before != after:
+            return verdict(False, "network changed during verification", transient=not mismatch)
         current = config.load()
         if (
             (allowed_country is None and current["allowed_country"] != target)
@@ -321,6 +391,7 @@ def check(*, routes=snapshot, request=None, environ=None, allowed_country=None) 
             True,
             f"all usable address families verified {target}"
             + (" and allowed IPs" if allowed_ips else ""),
+            fingerprint=before.fingerprint,
         )
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         return verdict(False, f"verification failed ({type(error).__name__})")

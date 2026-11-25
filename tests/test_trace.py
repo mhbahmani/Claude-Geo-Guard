@@ -27,7 +27,9 @@ def test_independent_destinations(isolated, monkeypatch, split, general, api, al
         )
 
     monkeypatch.setattr(checker, "query", query)
-    result = checker.check(routes=lambda: SimpleNamespace(families=(4,)), environ={})
+    result = checker.check(
+        routes=lambda: SimpleNamespace(families=(4,), fingerprint="test"), environ={}
+    )
     assert result.allowed is allowed
     assert set(result.observations) == (
         set(checker.TRACE_HOSTS) if split else {*checker.TRACE_HOSTS, "ifconfig.io"}

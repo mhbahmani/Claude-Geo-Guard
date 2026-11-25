@@ -78,8 +78,10 @@ sys.exit(int(setting("FAKE_CURL_EXIT","0")))
     )
     script(
         bins / "ip",
-        """import json, os, sys
-if "get" in sys.argv:
+        """import json, os, sys, time
+if "monitor" in sys.argv:
+    time.sleep(3600)
+elif "get" in sys.argv:
     if "-6" in sys.argv and not os.environ.get("FAKE_IPV6"):
         print("RTNETLINK answers: Network is unreachable", file=sys.stderr)
         sys.exit(2)

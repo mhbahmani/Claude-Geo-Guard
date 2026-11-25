@@ -2,6 +2,10 @@ import sys
 from importlib import import_module
 
 
+class Unroutable(RuntimeError):
+    """Public destinations are deliberately unreachable, e.g. a VPN kill switch."""
+
+
 def backend(name):
     systems = {"linux": "linux", "darwin": "macos"}
     if sys.platform not in systems:
@@ -28,3 +32,21 @@ def scan(*args):
 
 def terminate(*args, **kwargs):
     return backend("processes").terminate(*args, **kwargs)
+
+
+def pause(processes):
+    """Freeze processes where the platform supports it; returns those paused."""
+    adapter = backend("processes")
+    return adapter.pause(processes) if hasattr(adapter, "pause") else []
+
+
+def resume(processes):
+    adapter = backend("processes")
+    if hasattr(adapter, "resume"):
+        adapter.resume(processes)
+
+
+def watch(callback):
+    """Call back on kernel routing changes, or return None when unsupported."""
+    adapter = backend("networking")
+    return adapter.Watcher(callback) if hasattr(adapter, "Watcher") else None

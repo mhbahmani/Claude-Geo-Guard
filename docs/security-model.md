@@ -2,7 +2,7 @@
 
 This tool assists a cooperating user in avoiding Claude usage when public egress cannot be verified as the configured country (GB by default). It is not an adversarial sandbox, network firewall, compliance attestation, or physical-location proof.
 
-## Provided at implemented checkpoints
+## Launch and hook checkpoints
 
 - Only successful HTTP 200 responses containing a normalized ISO 3166-1 alpha-2 code matching the configured country allow a checkpoint. Every usable family must verify. HTTP/DNS/TLS errors, timeouts, invalid codes, missing dependencies, detected route changes, no usable routes and proxy ambiguity deny.
 - Curl validates certificates through its normal trust store; no TLS bypass flag is used. Redirects are not followed. `-q` suppresses user curl config. The provider learns the request's public egress IP as with any HTTPS request; the guard reads it for policy evaluation.
@@ -10,6 +10,12 @@ This tool assists a cooperating user in avoiding Claude usage when public egress
 - Supported Code hooks return exit 2 for denial. `onFailure: block` asks compatible Code engines to block spawn failures, timeouts and invalid output as well. Standalone Code versions below 2.1.295 are rejected. Desktop's engine and actual failure semantics need manual testing.
 - The monitor uses same-UID, executable and ancestry evidence, not a process name match. pidfds and start-time revalidation protect against stale PID reuse during signaling. SIGTERM is followed by SIGKILL after the configured grace.
 - Existing unrelated configuration is retained; conflicts are explicit. Backups are mode 0600 and can contain sensitive settings. Protect them as carefully as the original settings.
+
+## Runtime availability policy
+
+Running applications stay open when verification fails only because of transient connectivity or provider availability. After three failed checks (or immediately with no usable route), the monitor reports offline mode and continues checking. A country or IP mismatch and other hard failures still trigger termination. A failed probe does not prove that Claude cannot send traffic: while offline mode is active, running applications may communicate over an unverified connection. New launches and hook actions remain blocked until verification succeeds.
+
+On Linux, detected route changes pause monitored processes without a controlling terminal while the monitor checks the new network. Processes resume after successful verification or transient failure; a mismatch triggers termination. This is best-effort process control, not a network firewall.
 
 ## Not provided
 
@@ -27,7 +33,7 @@ The optional timezone only sets `TZ` for new guarded Claude processes. It is a l
 
 ## Privacy and load
 
-No analytics or telemetry. Check output and desktop UI include returned country codes and public IP addresses. Explicit allowed_ips are stored in config and backups; automatically observed IPs are not written to a history file. Desktop notification history and launch stderr may retain displayed IPs according to the desktop environment. Monitor journal messages contain verdicts, country codes, reason categories, process counts and termination events. Provider failure reasons include the address family, curl exit code and validated HTTP status when available. Runtime dialogs execute in a separate worker and never suspend monitoring; only one can be open at a time, with further events recorded in the journal. Curl's raw failure output and route snapshots are not logged. Each active monitor cycle makes one request per configured destination per usable family; each hook/launch makes its own live requests. Heavy tool use can hit provider rate limits, which deny checks and may close Desktop. There is deliberately no positive-result cache extending the acceptance window.
+No analytics or telemetry. Check output and desktop UI include returned country codes and public IP addresses. Explicit allowed_ips are stored in config and backups; automatically observed IPs are not written to a history file. Desktop notification history and launch stderr may retain displayed IPs according to the desktop environment. Monitor journal messages contain verdicts, country codes, reason categories, process counts and termination events. Provider failure reasons include the address family, curl exit code and validated HTTP status when available. Runtime dialogs execute in a separate worker and never suspend monitoring; only one can be open at a time, with further events recorded in the journal. Curl's raw failure output and route snapshots are not logged. Each active monitor cycle makes one request per configured destination per usable family; each hook/launch makes its own live requests. Heavy tool use can hit provider rate limits, which deny launch and hook checks and are tolerated by the runtime monitor as transient failures. There is deliberately no positive-result cache extending the acceptance window.
 
 ## Host trust and recovery
 

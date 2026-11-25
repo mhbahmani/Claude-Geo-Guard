@@ -222,3 +222,15 @@ def test_linux_ipv6_host_unreachable_with_vpn_default(monkeypatch, extra):
             snapshot()
     else:
         assert snapshot().families == (4,)
+
+
+def test_failure_timing_logs_only_numeric_metrics(caplog):
+    from claude_geo_guard.checker import failure_timing
+
+    error = subprocess.CalledProcessError(
+        28, ["curl"], stderr=b"private response\nGUARD_TIMING:0.01,0.2,0.0,0.0,2.0"
+    )
+    failure_timing("api.anthropic.com", 4, error)
+    assert '"time_connect": 0.2' in caplog.text
+    assert '"time_total": 2.0' in caplog.text
+    assert "private response" not in caplog.text

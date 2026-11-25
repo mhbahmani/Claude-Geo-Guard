@@ -4,7 +4,42 @@ import ipaddress
 import json
 import os
 import subprocess
+import threading
 from dataclasses import dataclass
+
+from .. import Unroutable
+
+
+class Watcher:
+    """Kernel route, rule and address events from `ip monitor`; no polling while idle."""
+
+    def __init__(self, callback):
+        self.process = subprocess.Popen(
+            ["ip", "-o", "monitor", "route", "rule", "address"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        self.thread = threading.Thread(target=self._read, args=(callback,), daemon=True)
+        self.thread.start()
+
+    def _read(self, callback):
+        for _line in self.process.stdout:
+            callback()
+
+    def alive(self):
+        return self.process.poll() is None
+
+    def close(self):
+        if self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+        self.process.stdout.close()
 
 
 @dataclass(frozen=True)
@@ -26,7 +61,7 @@ def _only_local_ipv6(routes):
 
 def snapshot() -> NetworkState:
     parts = []
-    families = []
+    families, blocked = [], []
     for family, target in ((4, "1.1.1.1"), (6, "2606:4700:4700::1111")):
         for what in (("route", "show", "table", "all"), ("rule", "show"), ("address", "show")):
             result = subprocess.run(
@@ -70,13 +105,18 @@ def snapshot() -> NetworkState:
                 raise RuntimeError(f"IPv{family} route lookup failed")
             continue
         records = json.loads(route.stdout)
-        if not records or any(
-            r.get("type") in {"unreachable", "blackhole", "prohibit"}
-            or r.get("dev") == "lo"
-            or not r.get("dev")
-            for r in records
+        if records and any(
+            r.get("type") in {"unreachable", "blackhole", "prohibit"} for r in records
         ):
+            blocked.append(family)
+            continue
+        if not records or any(r.get("dev") == "lo" or not r.get("dev") for r in records):
             raise RuntimeError(f"IPv{family} route is ambiguous")
         families.append(family)
         parts.append(stable(records))
+    if blocked and families:
+        raise RuntimeError(f"IPv{blocked[0]} route is ambiguous")
+    if blocked:
+        # A kill switch with its tunnel down: no family can reach the internet.
+        raise Unroutable("public routes are blocked")
     return NetworkState(tuple(families), json.dumps(parts, sort_keys=True))

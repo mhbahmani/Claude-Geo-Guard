@@ -120,7 +120,7 @@ def test_full_install_cli_hooks_desktop_uninstall(environment, monkeypatch):
 def test_live_monitor_kills_only_protected_native_process(environment, monkeypatch):
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))
-    (environment["bins"] / "FAKE_CURL_EXIT").write_text("28")
+    (environment["bins"] / "FAKE_COUNTRY").write_text("FR")
     # The service started without DISPLAY; the graphical session registered it later.
     systemctl = environment["bins"] / "systemctl"
     systemctl.write_text(
@@ -164,10 +164,45 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
         assert mon.returncode == 0
         logs = mon.stderr.read()
         assert b'"allowed": false' in logs
-        assert b"provider request timed out (curl exit 28" in logs
+        assert b'"FR"' in logs
         assert b"runtime_stop_requested" in logs and b"runtime_stop_finished" in logs
     finally:
         for child in (app, other, mon):
+            if child.poll() is None:
+                child.kill()
+            child.wait()
+        installer.uninstall(paths)
+
+
+def test_live_monitor_keeps_claude_open_while_offline(environment):
+    paths = environment["paths"]
+    installer.install(paths, installer.preflight(paths))
+    (environment["bins"] / "FAKE_CURL_EXIT").write_text("28")
+    (environment["bins"] / "notify-send").write_text(
+        "#!/usr/bin/python3\nimport os, sys\nfrom pathlib import Path\n"
+        '(Path(os.environ["HOME"]) / "runtime-notice").write_text(sys.argv[2])\n'
+    )
+    app = subprocess.Popen([str(environment["desktop"]), "60"])
+    mon = subprocess.Popen(
+        [str(paths.bin / "claude-geo-guard"), "monitor", "--interval", "30", "--grace", "0.1"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    notice = paths.home / "runtime-notice"
+    try:
+        deadline = time.monotonic() + 20
+        while not notice.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert notice.exists(), "monitor did not announce offline mode"
+        assert "Claude stays open" in notice.read_text()
+        assert app.poll() is None
+        mon.terminate()
+        mon.wait(timeout=5)
+        logs = mon.stderr.read()
+        assert logs.count(b"recheck_scheduled") == 2
+        assert b"offline_mode" in logs and b"runtime_stop_requested" not in logs
+    finally:
+        for child in (app, mon):
             if child.poll() is None:
                 child.kill()
             child.wait()

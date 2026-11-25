@@ -1,13 +1,15 @@
 import json
 import logging
 import signal
+import subprocess
 import threading
+import time
 
 from . import config, executables, health
 from .checker import Verdict, check
 from .desktop_launcher import LaunchBlocked
 from .platforms import backend
-from .platforms import scan, terminate
+from .platforms import Unroutable, pause, resume, scan, snapshot, terminate, watch
 from .storage import lock
 
 LOG = logging.getLogger("claude-geo-guard")
@@ -66,6 +68,85 @@ class RuntimeAlerts:
 
 notify = RuntimeAlerts()
 
+OFFLINE_MESSAGE = (
+    "Connection unavailable. Claude stays open and is checked again when the network "
+    "changes. A country or IP mismatch still closes it."
+)
+ONLINE_MESSAGE = "Connection verified again. Normal checks have resumed."
+# Starting another check while Claude is paused must stop after this long.
+PAUSE_SECONDS = 10
+
+
+def no_route(verdict):
+    """Denied before any request could leave: nothing can reach Anthropic either."""
+    return verdict.transient and not verdict.errors and not verdict.observations
+
+
+class Connectivity:
+    """Tracks transient failures and routing changes without treating them as verified."""
+
+    OFFLINE_AFTER = 3
+    RECHECK_SECONDS = (1, 3)
+
+    def __init__(self, routes=snapshot, announce=None):
+        self.routes = routes
+        self.announce = announce or (lambda message: None)
+        self.failures = 0
+        self.offline = False
+        # Routing fingerprints that were verified, or tolerated while offline.
+        self.known = set()
+
+    def current(self):
+        try:
+            return self.routes().fingerprint
+        except Unroutable:
+            return "unroutable"
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+            return None
+
+    def moved(self):
+        return bool(self.known) and self.current() not in self.known
+
+    def allowed(self, verdict):
+        """Record a verified network; True when this ends offline mode."""
+        was_offline = self.offline
+        self.failures, self.offline = 0, False
+        self.known = {verdict.fingerprint} if verdict.fingerprint else set()
+        return was_offline
+
+    def unreachable(self, conclusive=False):
+        """Count a transient failure; True when this one starts offline mode."""
+        self.failures += 1
+        entered = not self.offline and (conclusive or self.failures >= self.OFFLINE_AFTER)
+        self.offline = self.offline or entered
+        if self.offline and (fingerprint := self.current()) is not None:
+            self.known.add(fingerprint)
+        return entered
+
+    def delay(self, interval):
+        if not self.offline and 0 < self.failures < self.OFFLINE_AFTER:
+            return self.RECHECK_SECONDS[self.failures - 1]
+        return interval
+
+
+def _confirm_while_paused(verdict, checker, stop):
+    started = time.monotonic()
+    for delay in Connectivity.RECHECK_SECONDS:
+        if (
+            not verdict.transient
+            or no_route(verdict)
+            or time.monotonic() - started >= PAUSE_SECONDS
+        ):
+            break
+        if stop.wait(delay) if stop is not None else time.sleep(delay):
+            break
+        verdict = checker()
+    return verdict
+
+
+def _log(event, level=logging.INFO, **details):
+    LOG.log(level, json.dumps({"event": event, **details}))
+
 
 def tick(
     binaries,
@@ -77,11 +158,56 @@ def tick(
     killer=terminate,
     notifier=notify,
     paths=None,
+    connectivity=None,
+    check_due=True,
+    pauser=pause,
+    resumer=resume,
 ):
     processes = scanner(binaries, previous)
     if not processes:
         return []
+    paused = []
+    moved = connectivity is not None and connectivity.moved()
+    if not (check_due or moved):
+        return processes
+    if moved:
+        # Claude must not talk over an unchecked network while verification runs.
+        paused = pauser(processes)
+        _log("network_changed", logging.WARNING, paused_count=len(paused))
+    try:
+        return _decide(
+            binaries,
+            processes,
+            paused,
+            grace,
+            stop,
+            checker,
+            scanner,
+            killer,
+            notifier,
+            paths,
+            connectivity,
+        )
+    finally:
+        resumer(paused)
+
+
+def _decide(
+    binaries,
+    processes,
+    paused,
+    grace,
+    stop,
+    checker,
+    scanner,
+    killer,
+    notifier,
+    paths,
+    connectivity,
+):
     verdict = checker()
+    if paused:
+        verdict = _confirm_while_paused(verdict, checker, stop)
     LOG.info(
         json.dumps(
             {
@@ -95,6 +221,19 @@ def tick(
             }
         )
     )
+    if verdict.allowed:
+        if connectivity is not None and connectivity.allowed(verdict):
+            _log("connection_restored")
+            connectivity.announce(ONLINE_MESSAGE)
+        return processes
+    if verdict.transient and connectivity is not None:
+        conclusive = bool(paused) or no_route(verdict)
+        if connectivity.unreachable(conclusive):
+            _log("offline_mode", logging.WARNING, reason=verdict.reason)
+            connectivity.announce(OFFLINE_MESSAGE)
+        elif not connectivity.offline:
+            _log("recheck_scheduled", failures=connectivity.failures, reason=verdict.reason)
+        return processes
     if not verdict.allowed:
         # Refresh ancestry after network I/O; retain already identified children.
         processes = scanner(binaries, processes)
@@ -174,22 +313,94 @@ class Coverage:
         return self.error
 
 
+class Wake:
+    """The stop flag plus a sleep that routing changes cut short."""
+
+    def __init__(self):
+        self.stop = threading.Event()
+        self._event = threading.Event()
+        self._changed = False
+
+    def halt(self, *_):
+        self.stop.set()
+        self._event.set()
+
+    def poke(self):
+        self._changed = True
+        self._event.set()
+
+    def sleep(self, seconds):
+        """Returns True when a network change, not the timeout, ended the sleep."""
+        self._event.wait(seconds)
+        self._event.clear()
+        changed, self._changed = self._changed, False
+        return changed and not self.stop.is_set()
+
+
+class RouteWatch:
+    """Keeps a route watcher running; a dead one is restarted at most once a minute."""
+
+    RETRY_SECONDS = 60
+
+    def __init__(self, callback):
+        self.callback = callback
+        self.watcher = None
+        self.retry = 0.0
+
+    def ensure(self):
+        if self.watcher is not None and self.watcher.alive():
+            return
+        if time.monotonic() < self.retry:
+            return
+        self.retry = time.monotonic() + self.RETRY_SECONDS
+        if self.watcher is not None:
+            _log("route_watch_stopped", logging.WARNING)
+            self.close()
+        try:
+            self.watcher = watch(self.callback)
+        except (OSError, ValueError, RuntimeError) as error:
+            _log("route_watch_unavailable", logging.WARNING, error_type=type(error).__name__)
+
+    def close(self):
+        if self.watcher is not None:
+            self.watcher.close()
+            self.watcher = None
+
+
+def _announcer():
+    def announce(message):
+        def show():
+            try:
+                backend("dialogs").notify(message)
+            except Exception as error:
+                _log("notification_failed", logging.WARNING, error_type=type(error).__name__)
+
+        threading.Thread(target=show, daemon=True).start()
+
+    return announce
+
+
 def run(paths, interval=None, grace=None):
     backend("processes")  # Reject unavailable runtime protection before acquiring a lock.
     for key, value in (("interval", interval), ("grace", grace)):
         if value is not None:
             config.validate_timing(key, value)
-    stop = threading.Event()
+    wake = Wake()
+    stop = wake.stop
     for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, lambda *_: stop.set())
+        signal.signal(sig, wake.halt)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     alerts = RuntimeAlerts(stop)
+    routes = RouteWatch(wake.poke)
 
     try:
         with lock(paths.manifest.parent / "monitor.lock"):
             coverage = Coverage(paths)
+            connectivity = Connectivity(announce=_announcer())
             previous, state = [], ()
+            network_event, deadline = False, 0.0
             while not stop.is_set():
+                routes.ensure()
                 manifest_error = coverage.refresh()
                 checker, config_error, enabled = check, None, True
                 try:
@@ -210,8 +421,8 @@ def run(paths, interval=None, grace=None):
                     _transition(paths, problem, config_error is not None)
                     state = problem
                 if not enabled:
-                    previous = []
-                    stop.wait(cycle_interval)
+                    previous, network_event = [], False
+                    wake.sleep(cycle_interval)
                     continue
                 previous = tick(
                     set(coverage.binaries),
@@ -221,9 +432,18 @@ def run(paths, interval=None, grace=None):
                     paths=paths,
                     notifier=alerts,
                     checker=checker,
+                    connectivity=connectivity,
+                    check_due=not network_event,
                 )
-                stop.wait(cycle_interval)
+                if network_event:
+                    # Routing events must not postpone the regular schedule.
+                    pending = max(0.0, deadline - time.monotonic())
+                else:
+                    pending = connectivity.delay(cycle_interval)
+                    deadline = time.monotonic() + pending
+                network_event = wake.sleep(pending)
     finally:
+        routes.close()
         health.withdraw(paths)
         alerts.close()
 

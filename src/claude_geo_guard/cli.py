@@ -228,6 +228,11 @@ def main(argv=None):
             if args.command == "check":
                 result = verdict.as_dict()
                 print(json.dumps(result) if args.json else reports.connection(result))
+            elif verdict.transient:
+                print(
+                    f"Claude Geo Guard cannot verify the connection (offline or unreachable): {verdict.reason}",
+                    file=sys.stderr,
+                )
             elif not verdict.allowed:
                 print(f"Claude Geo Guard denied: {verdict.reason}", file=sys.stderr)
             return 0 if verdict.allowed else 2

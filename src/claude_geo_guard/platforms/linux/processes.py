@@ -3,7 +3,7 @@
 import os
 import signal
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -13,6 +13,7 @@ class Process:
     start: int
     parent: int
     executable: str
+    tty: int = field(default=0, compare=False)
 
 
 def inspect(pid, proc=Path("/proc")):
@@ -22,7 +23,7 @@ def inspect(pid, proc=Path("/proc")):
             return None
         fields = (directory / "stat").read_text().rsplit(")", 1)[1].split()
         exe = os.readlink(directory / "exe").removesuffix(" (deleted)")
-        return Process(pid, int(fields[19]), int(fields[1]), exe)
+        return Process(pid, int(fields[19]), int(fields[1]), exe, int(fields[4]))
     except (OSError, ValueError, IndexError):
         return None
 
@@ -82,9 +83,22 @@ def send(process, sig):
     return False
 
 
+def pause(processes):
+    # Stopping a terminal's foreground job hands the terminal back to the shell; those
+    # sessions keep relying on their hooks instead.
+    return [p for p in processes if p.tty == 0 and send(p, signal.SIGSTOP)]
+
+
+def resume(processes):
+    for process in processes:
+        send(process, signal.SIGCONT)
+
+
 def terminate(processes, grace=5, stop=None):
     for process in processes:
         send(process, signal.SIGTERM)
+        # A paused process handles the pending SIGTERM only once it runs again.
+        send(process, signal.SIGCONT)
     deadline = time.monotonic() + grace
     remaining = list(processes)
     while remaining and time.monotonic() < deadline:

@@ -155,6 +155,9 @@ def describe(error, *, runtime=False):
             heading = "Couldn’t verify your connection"
             explanation = "Claude Desktop stayed closed because the country check could not finish."
             next_step = "Check your connection, then open Claude again from Applications."
+            if verdict.transient:
+                explanation = "Claude Desktop stayed closed because the connection is offline or too slow to check."
+                next_step = "Open Claude again once you are online. Claude windows that are already open stay open while offline."
             if verdict.reason.startswith("egress outside configured country "):
                 heading = "Connection outside allowed country"
                 explanation = "Claude Desktop stayed closed because your connection does not match your country setting."
@@ -269,6 +272,20 @@ def _run_dialog(command, stop=None, env=None):
                         stdout, stderr = child.communicate()
                     break
         return subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
+
+
+def notify(message):
+    """A normal-priority notice from the monitor. Failures are ignored."""
+    try:
+        subprocess.run(
+            ["notify-send", TITLE, message],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=3,
+            env=_runtime_environment(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def _notify_error(title, body, env):
