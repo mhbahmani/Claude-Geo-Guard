@@ -118,6 +118,11 @@ def test_open_window_does_not_pause_checks_or_spawn_more_windows(monkeypatch, ca
 def test_runtime_logs_countries_reason_and_stop_order(caplog):
     caplog.set_level(logging.INFO)
     notifier = Mock()
+
+    # The closure alert must already be dispatched when the termination grace period starts.
+    def terminate(*args, **kwargs):
+        notifier.assert_called_once_with(verdict)
+
     verdict = Verdict(
         False,
         "verification failed: IPv6: provider request timed out (curl exit 28)",
@@ -128,7 +133,7 @@ def test_runtime_logs_countries_reason_and_stop_order(caplog):
         {P.executable},
         scanner=lambda *_: [P],
         checker=lambda: verdict,
-        killer=Mock(),
+        killer=terminate,
         notifier=notifier,
     )
     events = [json.loads(record.message) for record in caplog.records]

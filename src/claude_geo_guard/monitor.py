@@ -119,9 +119,10 @@ def tick(
                 }
             )
         )
+        # The alert worker runs independently of termination and its grace period.
+        notifier(verdict)
         killer(processes, grace=grace, stop=stop)
         LOG.warning(json.dumps({"event": "runtime_stop_finished", "process_count": len(processes)}))
-        notifier(verdict)
         return processes
     return processes
 

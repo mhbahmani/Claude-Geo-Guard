@@ -121,11 +121,23 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
     paths = environment["paths"]
     installer.install(paths, installer.preflight(paths))
     (environment["bins"] / "FAKE_CURL_EXIT").write_text("28")
-    monkeypatch.setenv("DISPLAY", ":fake-monitor-display")
+    # The service started without DISPLAY; the graphical session registered it later.
+    systemctl = environment["bins"] / "systemctl"
+    systemctl.write_text(
+        systemctl.read_text().replace(
+            "args = sys.argv[2:]",
+            'args = sys.argv[2:]\nif args == ["show-environment"]:\n    print("DISPLAY=:fake-monitor-display")\n    sys.exit(0)',
+        )
+    )
     monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
     (environment["bins"] / "zenity").write_text(
         "#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\n"
+        'assert os.environ.get("DISPLAY") == ":fake-monitor-display"\n'
         '(Path(os.environ["HOME"]) / "runtime-dialog.json").write_text(json.dumps(sys.argv[1:]))\n'
+    )
+    (environment["bins"] / "notify-send").write_text(
+        "#!/usr/bin/python3\nimport os, sys\nfrom pathlib import Path\n"
+        '(Path(os.environ["HOME"]) / "runtime-notice").write_text(sys.argv[2])\n'
     )
     app = subprocess.Popen([str(environment["desktop"]), "60"])
     other = subprocess.Popen(["/bin/sleep", "60"])
@@ -144,7 +156,8 @@ def test_live_monitor_kills_only_protected_native_process(environment, monkeypat
         assert dialog.exists(), "monitor did not invoke runtime dialog"
         dialog_args = json.loads(dialog.read_text())
         assert "Claude was closed by the guard" in dialog_args[-1]
-        assert "was closed" in dialog_args[-1]
+        assert "--modal" in dialog_args
+        assert (paths.home / "runtime-notice").read_text() == "Claude was closed by the guard"
         assert mon.poll() is None
         mon.terminate()
         mon.wait(timeout=5)

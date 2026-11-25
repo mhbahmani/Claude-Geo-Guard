@@ -84,6 +84,14 @@ def test_runtime_dialog_describes_unverified_connection_without_python_dicts():
     assert "{}" not in message
 
 
+def test_runtime_alert_requests_focus_until_dismissed(monkeypatch):
+    present = Mock(return_value=True)
+    monkeypatch.setattr(dialogs, "present", present)
+    assert dialogs.show_error(ValueError("timeout"), runtime=True)
+    script = present.call_args.args[0]
+    assert script.startswith("activate\n") and "giving up" not in script
+
+
 def test_runtime_dialog_formats_detected_family():
     verdict = Verdict(
         False,

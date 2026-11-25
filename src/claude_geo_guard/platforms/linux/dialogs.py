@@ -2,6 +2,7 @@
 
 import html
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -217,12 +218,41 @@ def _dismissed(result, helper):
     return result.returncode == 0 or (result.returncode in closed and not result.stderr)
 
 
-def _run_dialog(command, stop=None):
+def _runtime_environment():
+    # A user service can start before login and keep an old display or Xauthority.
+    env = os.environ.copy()
+    keys = {
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XAUTHORITY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+    }
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show-environment"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+        for line in result.stdout.splitlines():
+            key, _, value = line.partition("=")
+            if key in keys:
+                words = shlex.split(value)
+                if len(words) == 1:
+                    env[key] = words[0]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return env
+
+
+def _run_dialog(command, stop=None, env=None):
     if stop is None:
-        return subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True)
+        return subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, env=env)
     # Runtime UI must exit with the monitor, including when started outside systemd.
     with subprocess.Popen(
-        command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
     ) as child:
         while True:
             try:
@@ -240,6 +270,24 @@ def _run_dialog(command, stop=None):
         return subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
 
 
+def _notify_error(title, body, env):
+    try:
+        subprocess.run(
+            [
+                "notify-send",
+                "--urgency=critical",
+                title,
+                html.escape(body),
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=3,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def show_error(error, *, runtime=False, stop=None):
     """Show a summary with optional details; dismissal never retries or allows.
 
@@ -249,12 +297,17 @@ def show_error(error, *, runtime=False, stop=None):
     message = describe(error, runtime=runtime)
     if stop is not None and stop.is_set():
         return False
+    env = _runtime_environment() if runtime else os.environ
+    if runtime:
+        # Compositors may open a background service's dialog behind another window.
+        _notify_error(message.heading, message.explanation, env)
     helper = available()
-    if helper and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+    if helper and (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
         if helper == "zenity":
             command = [
                 helper,
                 "--error",
+                *(["--modal"] if runtime else []),
                 f"--title={TITLE}",
                 "--width=440",
                 "--ok-label=Close",
@@ -274,7 +327,7 @@ def show_error(error, *, runtime=False, stop=None):
             ]
         try:
             # No timer dismisses a message while the user is still reading it.
-            result = _run_dialog(command, stop)
+            result = _run_dialog(command, stop, env)
             if (
                 helper == "zenity"
                 and not (stop is not None and stop.is_set())
@@ -292,6 +345,7 @@ def show_error(error, *, runtime=False, stop=None):
                         f"--text={message.details}",
                     ],
                     stop,
+                    env,
                 )
             if _dismissed(result, helper):
                 return True
@@ -299,18 +353,6 @@ def show_error(error, *, runtime=False, stop=None):
             pass
     if stop is not None and stop.is_set():
         return False
-    try:
-        subprocess.run(
-            [
-                "notify-send",
-                "--urgency=critical",
-                TITLE,
-                html.escape(f"{message.heading}\n\n{message.details}"),
-            ],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=3,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    if not runtime:
+        _notify_error(TITLE, f"{message.heading}\n\n{message.details}", env)
     return False

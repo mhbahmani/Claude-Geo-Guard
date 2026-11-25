@@ -89,11 +89,9 @@ def progress_command(message):
 
 def show_error(error, runtime=False, stop=None):
     message = describe(error, runtime=runtime)
-    return present(
-        'display alert "Claude Guard" message (item 1 of argv) as critical giving up after 60',
-        message,
-        stop,
-    )
+    script = 'display alert "Claude Guard" message (item 1 of argv) as critical'
+    script = "activate\n" + script if runtime else script + " giving up after 60"
+    return present(script, message, stop)
 
 
 def notify(message):
