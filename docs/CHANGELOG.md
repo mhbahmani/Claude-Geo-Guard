@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0
+
+- Add `logs` for the Linux runtime monitor journal, with live following, time and line filters, and JSON output.
+- Show a grouped command guide when invoked without arguments, and use `claude-geo-guard` in help and errors.
+- Fix test isolation so reliability tests do not depend on a locally installed Claude executable.
+
 ## 0.8.1
 
 - Desktop closure notifications now request a five-second timeout and no longer remain as critical, persistent notifications.

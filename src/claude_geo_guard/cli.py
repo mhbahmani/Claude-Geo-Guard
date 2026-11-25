@@ -21,10 +21,92 @@ from .diagnostics import diagnostics
 from .paths import Paths
 
 
+class CommandParser(argparse.ArgumentParser):
+    def format_help(self):
+        return f"""Claude Geo Guard  {__version__}
+Geolocation checks for Claude Code and Desktop.
+
+Usage: claude-geo-guard <command> [options]
+
+Inspect
+  check             Verify your current connection
+  doctor            Diagnose installation and protection
+  status            Show the full status report as JSON
+  logs              Read runtime monitor logs
+
+Manage
+  enable / disable  Turn protection on or off
+  set-country CODE  Change the allowed country
+  set-timezone ZONE Set the timezone for new Claude sessions
+  install           Install or repair protection
+  uninstall         Remove the installation
+
+Service
+  monitor           Run the runtime monitor in the foreground
+  version           Show the installed version
+
+Examples
+  claude-geo-guard logs -f             Follow monitor events live
+  claude-geo-guard logs --since today  Review today's events
+  claude-geo-guard check --json        Get a machine-readable verdict
+
+Options
+  -h, --help        Show this guide
+  --version         Show the installed version
+
+Run claude-geo-guard <command> --help for command options.
+"""
+
+
+def nonnegative(value):
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected a nonnegative integer") from None
+    if number < 0:
+        raise argparse.ArgumentTypeError("expected a nonnegative integer")
+    return number
+
+
+def show_logs(args):
+    if sys.platform != "linux":
+        raise ValueError("logs currently requires Linux and a systemd user journal")
+    command = [
+        "journalctl",
+        "--user",
+        "--unit=claude-geo-guard.service",
+        f"--lines={args.lines}",
+        "--output=json" if args.json else "--output=short-iso",
+    ]
+    if args.follow:
+        command.append("--follow")
+    if args.since:
+        command.extend(["--since", args.since])
+    if args.no_pager or args.follow or not sys.stdout.isatty():
+        command.append("--no-pager")
+    try:
+        return subprocess.run(command).returncode
+    except KeyboardInterrupt:
+        return 0
+
+
 def parser():
-    root = argparse.ArgumentParser(description="Claude Geo Guard — best-effort checkpoints")
+    root = CommandParser(prog="claude-geo-guard", description="Claude Geo Guard")
     root.add_argument("--version", action="version", version=__version__)
-    sub = root.add_subparsers(dest="command", required=True)
+    sub = root.add_subparsers(dest="command", parser_class=argparse.ArgumentParser)
+    logs = sub.add_parser("logs", description="Read the runtime monitor's systemd user journal.")
+    logs.add_argument("-f", "--follow", action="store_true", help="follow new events; Ctrl-C exits")
+    logs.add_argument(
+        "-n",
+        "--lines",
+        type=nonnegative,
+        default=100,
+        metavar="N",
+        help="number of recent entries (default: 100)",
+    )
+    logs.add_argument("--since", metavar="TIME", help="start time, e.g. today or '10 minutes ago'")
+    logs.add_argument("--no-pager", action="store_true", help="print directly without a pager")
+    logs.add_argument("--json", action="store_true", help="output journal entries as JSON")
     sub.add_parser("version", help="show the Claude Geo Guard version")
     for name in ("check", "doctor"):
         sub.add_parser(name).add_argument(
@@ -110,12 +192,18 @@ def _cursor_hook_response():
 
 
 def main(argv=None):
-    args = parser().parse_args(argv)
+    root = parser()
+    args = root.parse_args(argv)
+    if args.command is None:
+        root.print_help()
+        return 0
     if args.command == "version":
         print(__version__)
         return 0
     paths = Paths.current()
     try:
+        if args.command == "logs":
+            return show_logs(args)
         backend("environment")
         if args.command in {"check", "hook"}:
             if args.command == "hook":

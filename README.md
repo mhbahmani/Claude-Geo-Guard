@@ -28,6 +28,15 @@ Cursor can import Claude Code hooks. The guard silently skips Cursor Agent’s o
 
 Run `claude-geo-guard check` for a connection report or `claude-geo-guard doctor` to diagnose the installation. Add `--json` to either command for scripts.
 
+Run `claude-geo-guard` without arguments for the command guide. On Linux, inspect the runtime monitor journal with:
+
+```sh
+claude-geo-guard logs                    # Latest 100 entries
+claude-geo-guard logs -f                 # Follow live; Ctrl-C exits
+claude-geo-guard logs -n 200 --since today
+claude-geo-guard logs --json --no-pager  # Journal JSON for scripts
+```
+
 To remove the guard, run `claude-geo-guard uninstall`.
 
 ## How the guard works
