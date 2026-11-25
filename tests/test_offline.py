@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from claude_geo_guard import monitor
+from claude_geo_guard import config, monitor
 from claude_geo_guard.checker import Egress, Verdict, check
 from claude_geo_guard.platforms import Unroutable
 from claude_geo_guard.platforms.linux import networking, processes
@@ -121,6 +121,31 @@ def test_timeouts_recheck_quickly_then_enter_offline_mode_without_closing():
     run_tick([ALLOWED], connectivity)
     assert not connectivity.offline and connectivity.failures == 0
     assert announce.call_args.args == (monitor.ONLINE_MESSAGE,)
+
+
+def test_offline_notices_can_be_turned_off_without_changing_behavior(caplog):
+    announce = Mock()
+    connectivity = monitor.Connectivity(routes=same("home"), announce=announce)
+    connectivity.notices = False
+    caplog.set_level("INFO", logger="claude-geo-guard")
+    for _ in range(3):
+        result, killer, _ = run_tick([TIMEOUT], connectivity)
+        assert result == [APP] and not killer.called
+    assert connectivity.offline
+    run_tick([ALLOWED], connectivity)
+    assert not connectivity.offline
+    announce.assert_not_called()
+    assert "offline_mode" in caplog.text and "connection_restored" in caplog.text
+
+
+def test_offline_notifications_default_on_and_are_validated(isolated):
+    assert config.load(isolated)["offline_notifications"] is True
+    isolated.guard_config.parent.mkdir(parents=True)
+    isolated.guard_config.write_text(json.dumps(dict(config.DEFAULTS, offline_notifications=False)))
+    assert config.load(isolated)["offline_notifications"] is False
+    isolated.guard_config.write_text(json.dumps(dict(config.DEFAULTS, offline_notifications="no")))
+    with pytest.raises(ValueError, match="offline_notifications"):
+        config.load(isolated)
 
 
 def test_no_route_enters_offline_mode_immediately():

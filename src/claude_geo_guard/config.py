@@ -19,6 +19,7 @@ DEFAULTS = {
     "grace": 5,
     "allowed_ips": [],
     "success_notifications": True,
+    "offline_notifications": True,
     "split_tunnel": False,
 }
 REQUIRED = {"allowed_country", "timezone", "interval", "grace"}
@@ -52,7 +53,7 @@ def validate(data):
         raise ValueError("config.json is missing: " + ", ".join(sorted(missing)))
     if unknown:
         raise ValueError(
-            "config.json has unknown keys; use enabled, allowed_country, timezone, interval, grace, allowed_ips, success_notifications, split_tunnel"
+            "config.json has unknown keys; use enabled, allowed_country, timezone, interval, grace, allowed_ips, success_notifications, offline_notifications, split_tunnel"
         )
     allowed_ips = data.get("allowed_ips", [])
     if not isinstance(allowed_ips, list):
@@ -68,6 +69,9 @@ def validate(data):
     notifications = data.get("success_notifications", True)
     if not isinstance(notifications, bool):
         raise ValueError("success_notifications must be true or false (Desktop launches only)")
+    offline = data.get("offline_notifications", True)
+    if not isinstance(offline, bool):
+        raise ValueError("offline_notifications must be true or false")
     return {
         "enabled": enabled,
         "allowed_country": normalize_country(data["allowed_country"]),
@@ -76,6 +80,7 @@ def validate(data):
         "grace": validate_timing("grace", data["grace"]),
         "allowed_ips": sorted(set(normalize_ip(value) for value in allowed_ips)),
         "success_notifications": notifications,
+        "offline_notifications": offline,
         "split_tunnel": split_tunnel,
     }
 

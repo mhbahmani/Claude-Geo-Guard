@@ -6,5 +6,6 @@
   "grace": 5,
   "allowed_ips": [],
   "split_tunnel": false,
-  "success_notifications": true
+  "success_notifications": true,
+  "offline_notifications": true
 }

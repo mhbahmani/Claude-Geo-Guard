@@ -196,7 +196,7 @@ def test_live_monitor_keeps_claude_open_while_offline(environment):
         while not notice.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert notice.exists(), "monitor did not announce offline mode"
-        assert "Claude stays open" in notice.read_text()
+        assert "Claude keeps running" in notice.read_text()
         assert app.poll() is None
         mon.terminate()
         mon.wait(timeout=5)

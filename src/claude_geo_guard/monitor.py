@@ -70,8 +70,8 @@ class RuntimeAlerts:
 notify = RuntimeAlerts()
 
 OFFLINE_MESSAGE = (
-    "Connection unavailable. Claude stays open and is checked again when the network "
-    "changes. A country or IP mismatch still closes it."
+    "The connection could not be verified (slow or unreachable network). Claude keeps "
+    "running; only a confirmed country or IP mismatch stops it."
 )
 ONLINE_MESSAGE = "Connection verified again. Normal checks have resumed."
 # Starting another check while Claude is paused must stop after this long.
@@ -94,6 +94,8 @@ class Connectivity:
         self.announce = announce or (lambda message: None)
         self.failures = 0
         self.offline = False
+        # Offline and restored notices are informational: nothing is blocked while offline.
+        self.notices = True
         # Routing fingerprints that were verified, or tolerated while offline.
         self.known = set()
 
@@ -104,6 +106,10 @@ class Connectivity:
             return "unroutable"
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             return None
+
+    def tell(self, message):
+        if self.notices:
+            self.announce(message)
 
     def moved(self):
         return bool(self.known) and self.current() not in self.known
@@ -230,13 +236,13 @@ def _decide(
             quarantine.release("verified")
         if connectivity is not None and connectivity.allowed(verdict):
             _log("connection_restored")
-            connectivity.announce(ONLINE_MESSAGE)
+            connectivity.tell(ONLINE_MESSAGE)
         return processes
     if verdict.transient and connectivity is not None:
         conclusive = bool(paused) or no_route(verdict)
         if connectivity.unreachable(conclusive):
             _log("offline_mode", logging.WARNING, reason=verdict.reason)
-            connectivity.announce(OFFLINE_MESSAGE)
+            connectivity.tell(OFFLINE_MESSAGE)
         elif not connectivity.offline:
             _log("recheck_scheduled", failures=connectivity.failures, reason=verdict.reason)
         return processes
@@ -444,6 +450,7 @@ def run(paths, interval=None, grace=None, pause_limit=None):
                     cycle_interval = preferences["interval"] if interval is None else interval
                     cycle_grace = preferences["grace"] if grace is None else grace
                     enabled = preferences["enabled"]
+                    connectivity.notices = preferences["offline_notifications"]
                 except (ValueError, OSError) as error:
                     # A malformed edit must not stop the monitor and leave apps running.
                     cycle_interval, cycle_grace = 5, 0
